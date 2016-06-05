@@ -77,7 +77,7 @@ import Data.ByteString (ByteString)
 import Data.Decimal
 import Data.Int
 import Data.IP
-import Data.List (unfoldr)
+import Data.List (foldl')
 import Data.Text (Text)
 import Data.UUID (UUID)
 import Data.Word
@@ -424,7 +424,7 @@ encodePagingState :: Putter PagingState
 encodePagingState (PagingState s) = encodeBytes s
 
 decodePagingState :: Get (Maybe PagingState)
-decodePagingState = liftM PagingState <$> decodeBytes
+decodePagingState = fmap PagingState <$> decodeBytes
 
 ------------------------------------------------------------------------------
 -- Value
@@ -593,34 +593,44 @@ toBytes s p = do
         _ -> put (fromIntegral (B.length bytes) :: Int32)
     putByteString bytes
 
--- 'integer2bytes' and 'bytes2integer' implementations are taken
--- from cereal's instance declaration of 'Serialize' for 'Integer'
--- except that no distinction between small and large integers is made.
--- Cf. to LICENSE for copyright details.
 integer2bytes :: Putter Integer
-integer2bytes n = do
-    put sign
-    put (unroll (abs n))
-  where
-    sign = fromIntegral (signum n) :: Word8
+integer2bytes n
+    | n == 0 = putWord8 0
+    | n <  0 = do
+        let bytes = explode (2 ^ bitLen n + n)
+        unless (head bytes >= 0x80) $
+            putWord8 0xFF
+        mapM_ putWord8 bytes
+    | otherwise = do
+        let bytes = explode n
+        unless (head bytes < 0x80) $
+            putWord8 0x00
+        mapM_ putWord8 bytes
 
-    unroll :: Integer -> [Word8]
-    unroll = unfoldr step
-      where
-        step 0 = Nothing
-        step i = Just (fromIntegral i, i `shiftR` 8)
+bitLen :: Integer -> Int
+bitLen n = loop n 0
+  where
+    loop  0 !a = a
+    loop !i !a = loop (i `quot` 256) (a + 8)
+
+explode :: Integer -> [Word8]
+explode n = loop n []
+  where
+    loop  0 !acc = acc
+    loop !i !acc = loop (i `quot` 256) (fromIntegral i : acc)
+
+implode :: [Word8] -> Integer
+implode = foldl' fun 0
+  where
+    fun i b = i `shiftL` 8 .|. fromIntegral b
 
 bytes2integer :: Get Integer
 bytes2integer = do
-    sign  <- get
-    bytes <- get
-    let v = roll bytes
-    return $! if sign == (1 :: Word8) then v else - v
-  where
-    roll :: [Word8] -> Integer
-    roll = foldr unstep 0
-      where
-        unstep b a = a `shiftL` 8 .|. fromIntegral b
+    msb   <- getWord8
+    bytes <- B.unpack <$> remainingBytes
+    if msb < 0x80
+        then return (implode (msb:bytes))
+        else return (- (implode (map complement (msb:bytes)) + 1))
 
 ------------------------------------------------------------------------------
 -- Various
