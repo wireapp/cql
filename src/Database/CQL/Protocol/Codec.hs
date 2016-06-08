@@ -56,14 +56,12 @@ module Database.CQL.Protocol.Codec
     , encodeOpCode
     , decodeOpCode
 
-    , encodeColumnType
-    , decodeColumnType
-
     , encodePagingState
     , decodePagingState
 
     , decodeKeyspace
     , decodeTable
+    , decodeColumnType
     , decodeQueryId
 
     , putValue
@@ -356,36 +354,6 @@ decodeOpCode = decodeByte >>= mapCode
 ------------------------------------------------------------------------------
 -- ColumnType
 
-encodeColumnType :: Putter ColumnType
-encodeColumnType (CustomColumn x)   = encodeShort 0x0000 >> encodeString x
-encodeColumnType AsciiColumn        = encodeShort 0x0001
-encodeColumnType BigIntColumn       = encodeShort 0x0002
-encodeColumnType BlobColumn         = encodeShort 0x0003
-encodeColumnType BooleanColumn      = encodeShort 0x0004
-encodeColumnType CounterColumn      = encodeShort 0x0005
-encodeColumnType DecimalColumn      = encodeShort 0x0006
-encodeColumnType DoubleColumn       = encodeShort 0x0007
-encodeColumnType FloatColumn        = encodeShort 0x0008
-encodeColumnType IntColumn          = encodeShort 0x0009
-encodeColumnType TextColumn         = encodeShort 0x000A
-encodeColumnType TimestampColumn    = encodeShort 0x000B
-encodeColumnType UuidColumn         = encodeShort 0x000C
-encodeColumnType VarCharColumn      = encodeShort 0x000D
-encodeColumnType VarIntColumn       = encodeShort 0x000E
-encodeColumnType TimeUuidColumn     = encodeShort 0x000F
-encodeColumnType InetColumn         = encodeShort 0x0010
-encodeColumnType (MaybeColumn x)    = encodeColumnType x
-encodeColumnType (ListColumn x)     = encodeShort 0x0020 >> encodeColumnType x
-encodeColumnType (MapColumn  x y)   = encodeShort 0x0021 >> encodeColumnType x >> encodeColumnType y
-encodeColumnType (SetColumn  x)     = encodeShort 0x0022 >> encodeColumnType x
-encodeColumnType (TupleColumn xs)   = encodeShort 0x0031 >> mapM_ encodeColumnType xs
-encodeColumnType (UdtColumn k n xs) = do
-    encodeShort 0x0030
-    encodeString (unKeyspace k)
-    encodeString n
-    encodeShort (fromIntegral (length xs))
-    forM_ xs $ \(x, t) -> encodeString x >> encodeColumnType t
-
 decodeColumnType :: Get ColumnType
 decodeColumnType = decodeShort >>= toType
   where
@@ -409,9 +377,12 @@ decodeColumnType = decodeShort >>= toType
     toType 0x0020 = ListColumn  <$> (decodeShort >>= toType)
     toType 0x0021 = MapColumn   <$> (decodeShort >>= toType) <*> (decodeShort >>= toType)
     toType 0x0022 = SetColumn   <$> (decodeShort >>= toType)
-    toType 0x0030 = UdtColumn   <$> (Keyspace <$> decodeString) <*> decodeString <*> do
-        n <- fromIntegral <$> decodeShort
-        replicateM n ((,) <$> decodeString <*> (decodeShort >>= toType))
+    toType 0x0030 = do
+        _ <- decodeString -- Keyspace (not used by this library)
+        t <- decodeString -- Type name
+        UdtColumn t <$> do
+            n <- fromIntegral <$> decodeShort
+            replicateM n ((,) <$> decodeString <*> (decodeShort >>= toType))
     toType 0x0031 = TupleColumn <$> do
         n <- fromIntegral <$> decodeShort
         replicateM n (decodeShort >>= toType)
@@ -476,17 +447,17 @@ putNative _ (CqlInet x)      = case x of
         putWord32host b
         putWord32host c
         putWord32host d
-putNative _ (CqlVarInt x)    = integer2bytes x
-putNative _ (CqlDecimal x)   = do
+putNative _ (CqlVarInt x)   = integer2bytes x
+putNative _ (CqlDecimal x)  = do
     put (fromIntegral (decimalPlaces x) :: Int32)
     integer2bytes (decimalMantissa x)
-putNative V3 (CqlUdt  x)     = putByteString $ runPut (mapM_ (putValue V3 . snd) x)
-putNative V2 v@(CqlUdt  _)   = fail $ "putNative: udt: " ++ show v
-putNative _ v@(CqlList  _)   = fail $ "putNative: collection type: " ++ show v
-putNative _ v@(CqlSet   _)   = fail $ "putNative: collection type: " ++ show v
-putNative _ v@(CqlMap   _)   = fail $ "putNative: collection type: " ++ show v
-putNative _ v@(CqlMaybe _)   = fail $ "putNative: collection type: " ++ show v
-putNative _ v@(CqlTuple _)   = fail $ "putNative: tuple type: " ++ show v
+putNative V3   (CqlUdt   x) = putByteString $ runPut (mapM_ (putValue V3 . snd) x)
+putNative V2 v@(CqlUdt   _) = fail $ "putNative: udt: " ++ show v
+putNative _  v@(CqlList  _) = fail $ "putNative: collection type: " ++ show v
+putNative _  v@(CqlSet   _) = fail $ "putNative: collection type: " ++ show v
+putNative _  v@(CqlMap   _) = fail $ "putNative: collection type: " ++ show v
+putNative _  v@(CqlMaybe _) = fail $ "putNative: collection type: " ++ show v
+putNative _  v@(CqlTuple _) = fail $ "putNative: tuple type: " ++ show v
 
 -- Note: Empty lists, maps and sets are represented as null in cassandra.
 getValue :: Version -> ColumnType -> Get Value
@@ -548,17 +519,17 @@ getNative _ DecimalColumn = do
     x <- get :: Get Int32
     y <- bytes2integer
     return (CqlDecimal (Decimal (fromIntegral x) y))
-getNative V3 (UdtColumn _ _ x) = do
+getNative V3 (UdtColumn _ x) = do
     b <- remainingBytes
     either fail return $ flip runGet b $ CqlUdt <$> do
         let (n, t) = unzip x
         zip n <$> mapM (getValue V3) t
-getNative V2 c@(UdtColumn _ _ _) = fail $ "getNative: udt: " ++ show c
-getNative _ c@(ListColumn  _)    = fail $ "getNative: collection type: " ++ show c
-getNative _ c@(SetColumn   _)    = fail $ "getNative: collection type: " ++ show c
-getNative _ c@(MapColumn _ _)    = fail $ "getNative: collection type: " ++ show c
-getNative _ c@(MaybeColumn _)    = fail $ "getNative: collection type: " ++ show c
-getNative _ c@(TupleColumn _)    = fail $ "getNative: tuple type: " ++ show c
+getNative V2 c@(UdtColumn _ _) = fail $ "getNative: udt: " ++ show c
+getNative _  c@(ListColumn  _) = fail $ "getNative: collection type: " ++ show c
+getNative _  c@(SetColumn   _) = fail $ "getNative: collection type: " ++ show c
+getNative _  c@(MapColumn _ _) = fail $ "getNative: collection type: " ++ show c
+getNative _  c@(MaybeColumn _) = fail $ "getNative: collection type: " ++ show c
+getNative _  c@(TupleColumn _) = fail $ "getNative: tuple type: " ++ show c
 
 getList :: Get [a] -> Get [a]
 getList m = do
