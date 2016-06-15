@@ -1,7 +1,3 @@
--- This Source Code Form is subject to the terms of the Mozilla Public
--- License, v. 2.0. If a copy of the MPL was not distributed with this
--- file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 {-# LANGUAGE BangPatterns      #-}
 {-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -77,7 +73,11 @@ import Data.ByteString (ByteString)
 import Data.Decimal
 import Data.Int
 import Data.IP
+#ifdef INCOMPATIBLE_VARINT
 import Data.List (unfoldr)
+#else
+import Data.List (foldl')
+#endif
 import Data.Text (Text)
 import Data.UUID (UUID)
 import Data.Word
@@ -424,7 +424,7 @@ encodePagingState :: Putter PagingState
 encodePagingState (PagingState s) = encodeBytes s
 
 decodePagingState :: Get (Maybe PagingState)
-decodePagingState = liftM PagingState <$> decodeBytes
+decodePagingState = fmap PagingState <$> decodeBytes
 
 ------------------------------------------------------------------------------
 -- Value
@@ -593,6 +593,8 @@ toBytes s p = do
         _ -> put (fromIntegral (B.length bytes) :: Int32)
     putByteString bytes
 
+#ifdef INCOMPATIBLE_VARINT
+
 -- 'integer2bytes' and 'bytes2integer' implementations are taken
 -- from cereal's instance declaration of 'Serialize' for 'Integer'
 -- except that no distinction between small and large integers is made.
@@ -622,6 +624,44 @@ bytes2integer = do
       where
         unstep b a = a `shiftL` 8 .|. fromIntegral b
 
+#else
+
+integer2bytes :: Putter Integer
+integer2bytes n
+    | n == 0  = putWord8 0x00
+    | n == -1 = putWord8 0xFF
+    | n <  0  = do
+        let bytes = explode (-1) n
+        unless (head bytes >= 0x80) $
+            putWord8 0xFF
+        mapM_ putWord8 bytes
+    | otherwise = do
+        let bytes = explode 0 n
+        unless (head bytes < 0x80) $
+            putWord8 0x00
+        mapM_ putWord8 bytes
+
+explode :: Integer -> Integer -> [Word8]
+explode x n = loop n []
+  where
+    loop !i !acc
+        | i == x    = acc
+        | otherwise = loop (i `shiftR` 8) (fromIntegral i : acc)
+
+bytes2integer :: Get Integer
+bytes2integer = do
+    msb   <- getWord8
+    bytes <- B.unpack <$> remainingBytes
+    if msb < 0x80
+        then return (implode (msb:bytes))
+        else return (- (implode (map complement (msb:bytes)) + 1))
+
+implode :: [Word8] -> Integer
+implode = foldl' fun 0
+  where
+    fun i b = i `shiftL` 8 .|. fromIntegral b
+
+#endif
 ------------------------------------------------------------------------------
 -- Various
 
