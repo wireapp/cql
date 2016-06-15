@@ -1,3 +1,10 @@
+3.1.0
+-----
+- Bugfix release. Previous versions used an encoding for `CqlVarInt`
+  and `CqlDecimal` which is *incompatible* with the actual CQL binary
+  protocol specification. If you want to continue using the previous
+  encoding use `-f incompatible-varint` when building this release.
+
 3.0.7
 -----
 - Bugfix release. Fixes UDT and tuple serialisation.

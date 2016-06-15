@@ -1,7 +1,3 @@
--- This Source Code Form is subject to the terms of the Mozilla Public
--- License, v. 2.0. If a copy of the MPL was not distributed with this
--- file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 {-# LANGUAGE BangPatterns      #-}
 {-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -77,7 +73,11 @@ import Data.ByteString (ByteString)
 import Data.Decimal
 import Data.Int
 import Data.IP
+#ifdef INCOMPATIBLE_VARINT
+import Data.List (unfoldr)
+#else
 import Data.List (foldl')
+#endif
 import Data.Text (Text)
 import Data.UUID (UUID)
 import Data.Word
@@ -593,6 +593,39 @@ toBytes s p = do
         _ -> put (fromIntegral (B.length bytes) :: Int32)
     putByteString bytes
 
+#ifdef INCOMPATIBLE_VARINT
+
+-- 'integer2bytes' and 'bytes2integer' implementations are taken
+-- from cereal's instance declaration of 'Serialize' for 'Integer'
+-- except that no distinction between small and large integers is made.
+-- Cf. to LICENSE for copyright details.
+integer2bytes :: Putter Integer
+integer2bytes n = do
+    put sign
+    put (unroll (abs n))
+  where
+    sign = fromIntegral (signum n) :: Word8
+
+    unroll :: Integer -> [Word8]
+    unroll = unfoldr step
+      where
+        step 0 = Nothing
+        step i = Just (fromIntegral i, i `shiftR` 8)
+
+bytes2integer :: Get Integer
+bytes2integer = do
+    sign  <- get
+    bytes <- get
+    let v = roll bytes
+    return $! if sign == (1 :: Word8) then v else - v
+  where
+    roll :: [Word8] -> Integer
+    roll = foldr unstep 0
+      where
+        unstep b a = a `shiftL` 8 .|. fromIntegral b
+
+#else
+
 integer2bytes :: Putter Integer
 integer2bytes n
     | n == 0  = putWord8 0x00
@@ -628,6 +661,7 @@ implode = foldl' fun 0
   where
     fun i b = i `shiftL` 8 .|. fromIntegral b
 
+#endif
 ------------------------------------------------------------------------------
 -- Various
 
