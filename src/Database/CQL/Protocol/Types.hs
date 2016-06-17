@@ -1,7 +1,3 @@
--- This Source Code Form is subject to the terms of the Mozilla Public
--- License, v. 2.0. If a copy of the MPL was not distributed with this
--- file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 module Database.CQL.Protocol.Types where
 
 import Data.ByteString (ByteString)
@@ -125,7 +121,7 @@ data ColumnType
     | SetColumn   !ColumnType
     | MapColumn   !ColumnType !ColumnType
     | TupleColumn [ColumnType]
-    | UdtColumn   !Keyspace !Text [(Text, ColumnType)]
+    | UdtColumn   !Text [(Text, ColumnType)]
     deriving (Eq)
 
 instance Show ColumnType where
@@ -159,9 +155,7 @@ instance Show ColumnType where
                            . showString (List.intercalate ", " (map show a))
                            . showString ">"
                            $ ""
-    show (UdtColumn k n f) = showString (unpack (unKeyspace k))
-                           . showString "."
-                           . showString (unpack n)
+    show (UdtColumn t f)   = showString (unpack t)
                            . showString "<"
                            . shows (List.intercalate ", " (map show f))
                            . showString ">"

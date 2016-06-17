@@ -1,7 +1,3 @@
--- This Source Code Form is subject to the terms of the Mozilla Public
--- License, v. 2.0. If a copy of the MPL was not distributed with this
--- file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -95,7 +91,7 @@ typeof (CqlMap  [])        = MapColumn (CustomColumn "a") (CustomColumn "b")
 typeof (CqlMap  ((x,y):_)) = MapColumn (typeof x) (typeof y)
 typeof (CqlCustom _)       = CustomColumn "a"
 typeof (CqlTuple x)        = TupleColumn (map typeof x)
-typeof (CqlUdt   x)        = UdtColumn (Keyspace "") "" (map (second typeof) x)
+typeof (CqlUdt   x)        = UdtColumn "" (map (second typeof) x)
 
 instance Arbitrary Value where
     arbitrary = oneof

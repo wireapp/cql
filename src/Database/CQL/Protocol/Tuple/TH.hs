@@ -1,7 +1,3 @@
--- This Source Code Form is subject to the terms of the Mozilla Public
--- License, v. 2.0. If a copy of the MPL was not distributed with this
--- file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 {-# LANGUAGE CPP                 #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -189,12 +185,19 @@ element :: Cql a => Version -> Tagged a ColumnType -> Get a
 element v t = getValue v (untag t) >>= either fail return . fromCql
 
 typecheck :: [ColumnType] -> [ColumnType] -> [ColumnType]
-typecheck rr cc = if and (zipWith (===) rr cc) then [] else rr
+typecheck rr cc = if checkAll (===) rr cc then [] else rr
   where
-    (MaybeColumn a) === b               = a === b
-    (ListColumn  a) === (ListColumn  b) = a === b
-    (SetColumn   a) === (SetColumn   b) = a === b
-    (MapColumn a b) === (MapColumn c d) = a === c && b === d
-    TextColumn      === VarCharColumn   = True
-    VarCharColumn   === TextColumn      = True
-    a               === b               = a == b
+    checkAll f as bs = and (zipWith f as bs)
+
+    checkField (a, b) (c, d) = a == c && b === d
+
+    TextColumn       === VarCharColumn    = True
+    VarCharColumn    === TextColumn       = True
+    (MaybeColumn  a) === b                = a === b
+    (ListColumn   a) === (ListColumn   b) = a === b
+    (SetColumn    a) === (SetColumn    b) = a === b
+    (MapColumn  a b) === (MapColumn  c d) = a === c && b === d
+    (UdtColumn a as) === (UdtColumn b bs) = a == b && checkAll checkField as bs
+    (TupleColumn as) === (TupleColumn bs) = checkAll (===) as bs
+    a                === b                = a == b
+
