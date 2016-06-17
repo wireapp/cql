@@ -121,7 +121,7 @@ data ColumnType
     | SetColumn   !ColumnType
     | MapColumn   !ColumnType !ColumnType
     | TupleColumn [ColumnType]
-    | UdtColumn   !Keyspace !Text [(Text, ColumnType)]
+    | UdtColumn   !Text [(Text, ColumnType)]
     deriving (Eq)
 
 instance Show ColumnType where
@@ -155,9 +155,7 @@ instance Show ColumnType where
                            . showString (List.intercalate ", " (map show a))
                            . showString ">"
                            $ ""
-    show (UdtColumn k n f) = showString (unpack (unKeyspace k))
-                           . showString "."
-                           . showString (unpack n)
+    show (UdtColumn t f)   = showString (unpack t)
                            . showString "<"
                            . shows (List.intercalate ", " (map show f))
                            . showString ">"
