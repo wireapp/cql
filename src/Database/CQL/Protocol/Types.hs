@@ -36,6 +36,7 @@ instance IsString (QueryString k a b) where
 data Version
     = V2 -- ^ version 2
     | V3 -- ^ version 3
+    | V4 -- ^ version 4
     deriving (Eq, Show)
 
 -- | The CQL version (not the binary protocol version).
@@ -122,6 +123,10 @@ data ColumnType
     | MapColumn   !ColumnType !ColumnType
     | TupleColumn [ColumnType]
     | UdtColumn   !Text [(Text, ColumnType)]
+    | DateColumn
+    | TimeColumn
+    | SmallIntColumn
+    | TinyIntColumn
     deriving (Eq)
 
 instance Show ColumnType where
@@ -142,6 +147,10 @@ instance Show ColumnType where
     show VarIntColumn      = "varint"
     show TimeUuidColumn    = "timeuuid"
     show InetColumn        = "inet"
+    show DateColumn        = "date"
+    show TimeColumn        = "time"
+    show SmallIntColumn    = "smallint"
+    show TinyIntColumn     = "tinyint"
     show (MaybeColumn a)   = show a ++ "?"
     show (ListColumn a)    = showString "list<" . shows a . showString ">" $ ""
     show (SetColumn a)     = showString "set<" . shows a . showString ">" $ ""
@@ -196,6 +205,10 @@ data Value
     | CqlMap       [(Value, Value)]
     | CqlTuple     [Value]             -- ^ binary protocol version >= 3
     | CqlUdt       [(Text, Value)]     -- ^ binary protocol version >= 3
+    | CqlDate      !Int32
+    | CqlTime      !Int64
+    | CqlSmallInt  !Int16
+    | CqlTinyInt   !Int8
     deriving (Eq, Show)
 
 -- | Tag some value with a phantom type.

@@ -374,6 +374,10 @@ decodeColumnType = decodeShort >>= toType
     toType 0x000E = return VarIntColumn
     toType 0x000F = return TimeUuidColumn
     toType 0x0010 = return InetColumn
+    toType 0x0011 = return DateColumn
+    toType 0x0012 = return TimeColumn
+    toType 0x0013 = return SmallIntColumn
+    toType 0x0014 = return TinyIntColumn
     toType 0x0020 = ListColumn  <$> (decodeShort >>= toType)
     toType 0x0021 = MapColumn   <$> (decodeShort >>= toType) <*> (decodeShort >>= toType)
     toType 0x0022 = SetColumn   <$> (decodeShort >>= toType)
@@ -400,25 +404,37 @@ decodePagingState = fmap PagingState <$> decodeBytes
 ------------------------------------------------------------------------------
 -- Value
 
+
 putValue :: Version -> Putter Value
+putValue V4 (CqlList x)        = toBytes 4 $ do
+    encodeInt (fromIntegral (length x))
+    mapM_ (toBytes 4 . putNative V4) x
 putValue V3 (CqlList x)        = toBytes 4 $ do
     encodeInt (fromIntegral (length x))
     mapM_ (toBytes 4 . putNative V3) x
 putValue V2 (CqlList x)        = toBytes 4 $ do
     encodeShort (fromIntegral (length x))
     mapM_ (toBytes 2 . putNative V2) x
+putValue V4 (CqlSet x)         = toBytes 4 $ do
+    encodeInt (fromIntegral (length x))
+    mapM_ (toBytes 4 . putNative V4) x
 putValue V3 (CqlSet x)         = toBytes 4 $ do
     encodeInt (fromIntegral (length x))
     mapM_ (toBytes 4 . putNative V3) x
 putValue V2 (CqlSet x)         = toBytes 4 $ do
     encodeShort (fromIntegral (length x))
     mapM_ (toBytes 2 . putNative V2) x
+putValue V4 (CqlMap x)         = toBytes 4 $ do
+    encodeInt (fromIntegral (length x))
+    forM_ x $ \(k, v) -> toBytes 4 (putNative V4 k) >> toBytes 4 (putNative V4 v)
 putValue V3 (CqlMap x)         = toBytes 4 $ do
     encodeInt (fromIntegral (length x))
     forM_ x $ \(k, v) -> toBytes 4 (putNative V3 k) >> toBytes 4 (putNative V3 v)
 putValue V2 (CqlMap x)         = toBytes 4 $ do
     encodeShort (fromIntegral (length x))
     forM_ x $ \(k, v) -> toBytes 2 (putNative V2 k) >> toBytes 2 (putNative V2 v)
+putValue V4 (CqlTuple x)       =
+    toBytes 4 $ putByteString $ runPut (mapM_ (putValue V4) x)
 putValue V3 (CqlTuple x)       =
     toBytes 4 $ putByteString $ runPut (mapM_ (putValue V3) x)
 putValue _ (CqlMaybe Nothing)  = put (-1 :: Int32)
@@ -451,6 +467,11 @@ putNative _ (CqlVarInt x)   = integer2bytes x
 putNative _ (CqlDecimal x)  = do
     put (fromIntegral (decimalPlaces x) :: Int32)
     integer2bytes (decimalMantissa x)
+putNative V4 (CqlDate x)    = put x
+putNative V4 (CqlTime x)    = put x
+putNative V4 (CqlSmallInt x) = put x
+putNative V4 (CqlTinyInt x) = put x
+putNative V4   (CqlUdt   x) = putByteString $ runPut (mapM_ (putValue V4 . snd) x)
 putNative V3   (CqlUdt   x) = putByteString $ runPut (mapM_ (putValue V3 . snd) x)
 putNative V2 v@(CqlUdt   _) = fail $ "putNative: udt: " ++ show v
 putNative _  v@(CqlList  _) = fail $ "putNative: collection type: " ++ show v
@@ -459,20 +480,31 @@ putNative _  v@(CqlMap   _) = fail $ "putNative: collection type: " ++ show v
 putNative _  v@(CqlMaybe _) = fail $ "putNative: collection type: " ++ show v
 putNative _  v@(CqlTuple _) = fail $ "putNative: tuple type: " ++ show v
 
+
 -- Note: Empty lists, maps and sets are represented as null in cassandra.
 getValue :: Version -> ColumnType -> Get Value
+getValue V4 (ListColumn t)    = CqlList <$> (getList $ do
+    len <- decodeInt
+    replicateM (fromIntegral len) (withBytes 4 (getNative V4 t)))
 getValue V3 (ListColumn t)    = CqlList <$> (getList $ do
     len <- decodeInt
     replicateM (fromIntegral len) (withBytes 4 (getNative V3 t)))
 getValue V2 (ListColumn t)    = CqlList <$> (getList $ do
     len <- decodeShort
     replicateM (fromIntegral len) (withBytes 2 (getNative V2 t)))
+getValue V4 (SetColumn t)     = CqlSet <$> (getList $ do
+    len <- decodeInt
+    replicateM (fromIntegral len) (withBytes 4 (getNative V4 t)))
 getValue V3 (SetColumn t)     = CqlSet <$> (getList $ do
     len <- decodeInt
     replicateM (fromIntegral len) (withBytes 4 (getNative V3 t)))
 getValue V2 (SetColumn t)     = CqlSet <$> (getList $ do
     len <- decodeShort
     replicateM (fromIntegral len) (withBytes 2 (getNative V2 t)))
+getValue V4 (MapColumn t u)   = CqlMap <$> (getList $ do
+    len <- decodeInt
+    replicateM (fromIntegral len)
+               ((,) <$> withBytes 4 (getNative V4 t) <*> withBytes 4 (getNative V4 u)))
 getValue V3 (MapColumn t u)   = CqlMap <$> (getList $ do
     len <- decodeInt
     replicateM (fromIntegral len)
@@ -481,6 +513,9 @@ getValue V2 (MapColumn t u)   = CqlMap <$> (getList $ do
     len <- decodeShort
     replicateM (fromIntegral len)
                ((,) <$> withBytes 2 (getNative V2 t) <*> withBytes 2 (getNative V2 u)))
+getValue V4 (TupleColumn t)   = do
+    b <- withBytes 4 remainingBytes
+    either fail return $ flip runGet b $ CqlTuple <$> mapM (getValue V4) t
 getValue V3 (TupleColumn t)   = do
     b <- withBytes 4 remainingBytes
     either fail return $ flip runGet b $ CqlTuple <$> mapM (getValue V3) t
@@ -514,11 +549,20 @@ getNative _ InetColumn       = CqlInet <$> do
             a <- (,,,) <$> getWord32host <*> getWord32host <*> getWord32host <*> getWord32host
             return $ IPv6 (fromHostAddress6 a)
         n  -> fail $ "getNative: invalid Inet length: " ++ show n
-getNative _ VarIntColumn  = CqlVarInt <$> bytes2integer
+getNative V4 DateColumn     = CqlDate <$> get
+getNative V4 TimeColumn     = CqlTime <$> get
+getNative V4 SmallIntColumn = CqlSmallInt <$> get
+getNative V4 TinyIntColumn  = CqlTinyInt <$> get
+getNative _ VarIntColumn    = CqlVarInt <$> bytes2integer
 getNative _ DecimalColumn = do
     x <- get :: Get Int32
     y <- bytes2integer
     return (CqlDecimal (Decimal (fromIntegral x) y))
+getNative V4 (UdtColumn _ x) = do
+    b <- remainingBytes
+    either fail return $ flip runGet b $ CqlUdt <$> do
+        let (n, t) = unzip x
+        zip n <$> mapM (getValue V4) t
 getNative V3 (UdtColumn _ x) = do
     b <- remainingBytes
     either fail return $ flip runGet b $ CqlUdt <$> do
