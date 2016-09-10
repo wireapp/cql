@@ -57,7 +57,11 @@ recordInstance n = do
         _        -> fail "expecting record type"
 
 start :: Dec -> Q [Dec]
+#if MIN_VERSION_template_haskell(2,11,0)
+start (DataD _ tname _ _ cons _) = do
+#else
 start (DataD _ tname _ cons _) = do
+#endif
     unless (length cons == 1) $
         fail "expecting single data constructor"
     tt <- tupleType (head cons)
@@ -65,7 +69,11 @@ start (DataD _ tname _ cons _) = do
     ar <- asRecrdDecl (head cons)
     return
         [ typeSynDecl (mkName "TupleType") [ConT tname] tt
+#if MIN_VERSION_template_haskell(2,11,0)
+        , InstanceD Nothing [] (ConT (mkName "Record") $: ConT tname)
+#else
         , InstanceD [] (ConT (mkName "Record") $: ConT tname)
+#endif
             [ FunD (mkName "asTuple")  [at]
             , FunD (mkName "asRecord") [ar]
             ]
