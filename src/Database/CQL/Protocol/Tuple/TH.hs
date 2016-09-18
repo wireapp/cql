@@ -106,13 +106,21 @@ tupleInstance n = do
     td <- tupleDecl n
     sd <- storeDecl n
     return
+#if MIN_VERSION_template_haskell(2,11,0)
+        [ InstanceD Nothing ctx (tcon "PrivateTuple" $: tupleType)
+#else
         [ InstanceD ctx (tcon "PrivateTuple" $: tupleType)
+#endif
             [ FunD (mkName "count") [countDecl n]
             , FunD (mkName "check") [checkDecl vnames]
             , FunD (mkName "tuple") [td]
             , FunD (mkName "store") [sd]
             ]
+#if MIN_VERSION_template_haskell(2,11,0)
+        , InstanceD Nothing ctx (tcon "Tuple" $: tupleType) []
+#else
         , InstanceD ctx (tcon "Tuple" $: tupleType) []
+#endif
         ]
 
 countDecl :: Int -> Clause

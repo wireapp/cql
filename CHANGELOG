@@ -1,3 +1,7 @@
+3.1.1
+-----
+- Fix compatibility with template-haskell 2.11.0.0
+
 3.1.0
 -----
 - Bugfix: Previous versions used an encoding for `CqlVarInt`
