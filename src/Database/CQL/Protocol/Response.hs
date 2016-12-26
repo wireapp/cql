@@ -82,14 +82,14 @@ import qualified Data.Text            as T
 -- 'a' represents the argument type and 'b' the return type of this
 -- response.
 data Response k a b
-    = RsError         (Maybe UUID) !Error
-    | RsReady         (Maybe UUID) !Ready
-    | RsAuthenticate  (Maybe UUID) !Authenticate
-    | RsAuthChallenge (Maybe UUID) !AuthChallenge
-    | RsAuthSuccess   (Maybe UUID) !AuthSuccess
-    | RsSupported     (Maybe UUID) !Supported
-    | RsResult        (Maybe UUID) !(Result k a b)
-    | RsEvent         (Maybe UUID) !Event
+    = RsError         (Maybe UUID) (Maybe [Text]) !Error
+    | RsReady         (Maybe UUID) (Maybe [Text]) !Ready
+    | RsAuthenticate  (Maybe UUID) (Maybe [Text]) !Authenticate
+    | RsAuthChallenge (Maybe UUID) (Maybe [Text]) !AuthChallenge
+    | RsAuthSuccess   (Maybe UUID) (Maybe [Text]) !AuthSuccess
+    | RsSupported     (Maybe UUID) (Maybe [Text]) !Supported
+    | RsResult        (Maybe UUID) (Maybe [Text]) !(Result k a b)
+    | RsEvent         (Maybe UUID) (Maybe [Text]) !Event
     deriving Show
 
 -- | Deserialise a 'Response' from the given 'ByteString'.
@@ -104,17 +104,18 @@ unpack c h b = do
     x <- if compress `isSet` f then deflate c b else return b
     flip runGetLazy x $ do
         t <- if tracing `isSet` f then Just <$> decodeUUID else return Nothing
-        message v t (opCode h)
+        w <- if warning `isSet` f then Just <$> decodeList else return Nothing
+        message v t w (opCode h)
   where
-    message _ t OcError         = RsError         t <$> decodeError
-    message _ t OcReady         = RsReady         t <$> decodeReady
-    message _ t OcAuthenticate  = RsAuthenticate  t <$> decodeAuthenticate
-    message _ t OcSupported     = RsSupported     t <$> decodeSupported
-    message v t OcResult        = RsResult        t <$> decodeResult v
-    message v t OcEvent         = RsEvent         t <$> decodeEvent v
-    message _ t OcAuthChallenge = RsAuthChallenge t <$> decodeAuthChallenge
-    message _ t OcAuthSuccess   = RsAuthSuccess   t <$> decodeAuthSuccess
-    message _ _ other           = fail $ "decode-response: unknown: " ++ show other
+    message _ t w OcError         = RsError         t w <$> decodeError
+    message _ t w OcReady         = RsReady         t w <$> decodeReady
+    message _ t w OcAuthenticate  = RsAuthenticate  t w <$> decodeAuthenticate
+    message _ t w OcSupported     = RsSupported     t w <$> decodeSupported
+    message v t w OcResult        = RsResult        t w <$> decodeResult v
+    message v t w OcEvent         = RsEvent         t w <$> decodeEvent v
+    message _ t w OcAuthChallenge = RsAuthChallenge t w <$> decodeAuthChallenge
+    message _ t w OcAuthSuccess   = RsAuthSuccess   t w <$> decodeAuthSuccess
+    message _ _ _ other           = fail $ "decode-response: unknown: " ++ show other
 
     deflate f x  = maybe deflateError return (expand f x)
     deflateError = Left "unpack: decompression failure"
@@ -192,9 +193,10 @@ data Result k a b
 
 -- | Part of a @RowsResult@. Describes the result set.
 data MetaData = MetaData
-    { columnCount :: !Int32
-    , pagingState :: Maybe PagingState
-    , columnSpecs :: [ColumnSpec]
+    { columnCount        :: !Int32
+    , pagingState        :: Maybe PagingState
+    , columnSpecs        :: [ColumnSpec]
+    , primaryKeyIndicies :: [Int32]
     } deriving (Show)
 
 -- | The column specification. Part of 'MetaData' unless 'skipMetaData' in
@@ -227,7 +229,9 @@ decodeResult v = decodeInt >>= go
             fail $ "column-type error: " ++ message
         RowsResult m <$> replicateM (fromIntegral n) (tuple v ctypes)
     go 0x3 = SetKeyspaceResult <$> decodeKeyspace
-    go 0x4 = PreparedResult <$> decodeQueryId <*> decodeMetaData <*> decodeMetaData
+    go 0x4 = case v of
+               x | x == V4 -> PreparedResult <$> decodeQueryId <*> decodePreparedV4 <*> decodeMetaData
+               _ -> PreparedResult <$> decodeQueryId <*> decodeMetaData <*> decodeMetaData
     go 0x5 = SchemaChangeResult <$> decodeSchemaChange v
     go int = fail $ "decode-result: unknown: " ++ show int
 
@@ -237,11 +241,37 @@ decodeMetaData = do
     n <- decodeInt
     p <- if hasMorePages f then decodePagingState else return Nothing
     if hasNoMetaData f
-        then return $ MetaData n p []
-        else MetaData n p <$> decodeSpecs n (hasGlobalSpec f)
+        then return $ MetaData n p [] []
+        else MetaData n p <$> decodeSpecs n (hasGlobalSpec f) <*> pure []
   where
     hasGlobalSpec f = f `testBit` 0
     hasMorePages  f = f `testBit` 1
+    hasNoMetaData f = f `testBit` 2
+
+    decodeSpecs n True = do
+        k <- decodeKeyspace
+        t <- decodeTable
+        replicateM (fromIntegral n) $ ColumnSpec k t
+            <$> decodeString
+            <*> decodeColumnType
+
+    decodeSpecs n False =
+        replicateM (fromIntegral n) $ ColumnSpec
+            <$> decodeKeyspace
+            <*> decodeTable
+            <*> decodeString
+            <*> decodeColumnType
+
+decodePreparedV4 :: Get MetaData
+decodePreparedV4 = do
+    f <- decodeInt
+    n <- decodeInt
+    pkCount <- decodeInt
+    if hasNoMetaData f
+        then return $ MetaData n Nothing [] []
+        else MetaData n Nothing <$> decodeSpecs n (hasGlobalSpec f) <*> replicateM (fromIntegral pkCount) decodeInt
+  where
+    hasGlobalSpec f = f `testBit` 0
     hasNoMetaData f = f `testBit` 2
 
     decodeSpecs n True = do
@@ -268,9 +298,11 @@ data SchemaChange
     deriving Show
 
 data Change
-    = KeyspaceChange !Keyspace
-    | TableChange    !Keyspace !Table
-    | TypeChange     !Keyspace !Text
+    = KeyspaceChange  !Keyspace
+    | TableChange     !Keyspace !Table
+    | TypeChange      !Keyspace !Text
+    | FunctionChange  !Keyspace !Text ![Text]
+    | AggregateChange !Keyspace !Text ![Text]
     deriving Show
 
 decodeSchemaChange :: Version -> Get SchemaChange
@@ -282,12 +314,20 @@ decodeSchemaChange v = decodeString >>= fromString
     fromString other     = fail $ "decode-schema-change: unknown: " ++ show other
 
 decodeChange :: Version -> Get Change
+decodeChange V4 = decodeString >>= fromString
+  where
+    fromString "KEYSPACE"  = KeyspaceChange  <$> decodeKeyspace
+    fromString "TABLE"     = TableChange     <$> decodeKeyspace <*> decodeTable
+    fromString "TYPE"      = TypeChange      <$> decodeKeyspace <*> decodeString
+    fromString "FUNCTION"  = FunctionChange  <$> decodeKeyspace <*> decodeString <*> decodeList
+    fromString "AGGREGATE" = AggregateChange <$> decodeKeyspace <*> decodeString <*> decodeList
+    fromString other      = fail $ "decode-change V4: unknown: " ++ show other
 decodeChange V3 = decodeString >>= fromString
   where
     fromString "KEYSPACE" = KeyspaceChange <$> decodeKeyspace
     fromString "TABLE"    = TableChange    <$> decodeKeyspace <*> decodeTable
     fromString "TYPE"     = TypeChange     <$> decodeKeyspace <*> decodeString
-    fromString other      = fail $ "decode-change: unknown: " ++ show other
+    fromString other      = fail $ "decode-change V3: unknown: " ++ show other
 decodeChange V2 = do
     k <- decodeKeyspace
     t <- decodeTable
@@ -339,6 +379,7 @@ data Error
     = AlreadyExists   !Text !Keyspace !Table
     | BadCredentials  !Text
     | ConfigError     !Text
+    | FunctionFailure !Text !Keyspace !Text ![Text]
     | Invalid         !Text
     | IsBootstrapping !Text
     | Overloaded      !Text
@@ -354,12 +395,29 @@ data Error
         , unavailNumRequired :: !Int32
         , unavailNumAlive    :: !Int32
         }
+    | ReadFailure
+        { rFailureMessage     :: !Text
+        , rFailureConsistency :: !Consistency
+        , rFailureNumAck      :: !Int32
+        , rFailureNumRequired :: !Int32
+        , rFailureNumFailures :: !Int32
+        , rFailureDataPresent :: !Bool
+        }
+
     | ReadTimeout
         { rTimeoutMessage     :: !Text
         , rTimeoutConsistency :: !Consistency
         , rTimeoutNumAck      :: !Int32
         , rTimeoutNumRequired :: !Int32
         , rTimeoutDataPresent :: !Bool
+        }
+    | WriteFailure
+        { wFailureMessage     :: !Text
+        , wFailureConsistency :: !Consistency
+        , wFailureNumAck      :: !Int32
+        , wFailureNumRequired :: !Int32
+        , wFailureNumFailures :: !Int32
+        , wFailureWriteType   :: !WriteType
         }
     | WriteTimeout
         { wTimeoutMessage     :: !Text
@@ -368,6 +426,7 @@ data Error
         , wTimeoutNumRequired :: !Int32
         , wTimeoutWriteType   :: !WriteType
         }
+
     deriving (Eq, Show, Typeable)
 
 instance Exception Error
@@ -404,6 +463,22 @@ decodeError = do
         <*> decodeInt
         <*> decodeInt
         <*> (bool <$> decodeByte)
+    toError 0x1300 m = ReadFailure m
+        <$> decodeConsistency
+        <*> decodeInt
+        <*> decodeInt
+        <*> decodeInt
+        <*> (bool <$> decodeByte)
+    toError 0x1400 m = FunctionFailure m
+        <$> decodeKeyspace
+        <*> decodeString
+        <*> decodeList
+    toError 0x0015 m = WriteFailure m
+        <$> decodeConsistency
+        <*> decodeInt
+        <*> decodeInt
+        <*> decodeInt
+        <*> decodeWriteType
     toError 0x2000 m = return $ SyntaxError m
     toError 0x2100 m = return $ Unauthorized m
     toError 0x2200 m = return $ Invalid m

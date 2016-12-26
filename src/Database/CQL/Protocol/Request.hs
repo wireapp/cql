@@ -299,6 +299,7 @@ data QueryParams a = QueryParams
     , pageSize          :: Maybe Int32  -- ^ desired result set size
     , queryPagingState  :: Maybe PagingState
     , serialConsistency :: Maybe SerialConsistency
+    , enableTracing     :: Maybe Bool   -- ^ enable tracing
     } deriving Show
 
 -- | Consistency level for the serial phase of conditional updates.
