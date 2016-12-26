@@ -82,14 +82,14 @@ import qualified Data.Text            as T
 -- 'a' represents the argument type and 'b' the return type of this
 -- response.
 data Response k a b
-    = RsError         (Maybe UUID) (Maybe [Text]) !Error
-    | RsReady         (Maybe UUID) (Maybe [Text]) !Ready
-    | RsAuthenticate  (Maybe UUID) (Maybe [Text]) !Authenticate
-    | RsAuthChallenge (Maybe UUID) (Maybe [Text]) !AuthChallenge
-    | RsAuthSuccess   (Maybe UUID) (Maybe [Text]) !AuthSuccess
-    | RsSupported     (Maybe UUID) (Maybe [Text]) !Supported
-    | RsResult        (Maybe UUID) (Maybe [Text]) !(Result k a b)
-    | RsEvent         (Maybe UUID) (Maybe [Text]) !Event
+    = RsError         (Maybe UUID) [Text] !Error
+    | RsReady         (Maybe UUID) [Text] !Ready
+    | RsAuthenticate  (Maybe UUID) [Text] !Authenticate
+    | RsAuthChallenge (Maybe UUID) [Text] !AuthChallenge
+    | RsAuthSuccess   (Maybe UUID) [Text] !AuthSuccess
+    | RsSupported     (Maybe UUID) [Text] !Supported
+    | RsResult        (Maybe UUID) [Text] !(Result k a b)
+    | RsEvent         (Maybe UUID) [Text] !Event
     deriving Show
 
 -- | Deserialise a 'Response' from the given 'ByteString'.
@@ -104,7 +104,7 @@ unpack c h b = do
     x <- if compress `isSet` f then deflate c b else return b
     flip runGetLazy x $ do
         t <- if tracing `isSet` f then Just <$> decodeUUID else return Nothing
-        w <- if warning `isSet` f then Just <$> decodeList else return Nothing
+        w <- if warning `isSet` f then decodeList else return []
         message v t w (opCode h)
   where
     message _ t w OcError         = RsError         t w <$> decodeError
@@ -229,9 +229,9 @@ decodeResult v = decodeInt >>= go
             fail $ "column-type error: " ++ message
         RowsResult m <$> replicateM (fromIntegral n) (tuple v ctypes)
     go 0x3 = SetKeyspaceResult <$> decodeKeyspace
-    go 0x4 = case v of
-               x | x == V4 -> PreparedResult <$> decodeQueryId <*> decodePreparedV4 <*> decodeMetaData
-               _ -> PreparedResult <$> decodeQueryId <*> decodeMetaData <*> decodeMetaData
+    go 0x4 = if v == V4
+                then PreparedResult <$> decodeQueryId <*> decodePreparedV4 <*> decodeMetaData
+                else PreparedResult <$> decodeQueryId <*> decodeMetaData <*> decodeMetaData
     go 0x5 = SchemaChangeResult <$> decodeSchemaChange v
     go int = fail $ "decode-result: unknown: " ++ show int
 
@@ -473,7 +473,7 @@ decodeError = do
         <$> decodeKeyspace
         <*> decodeString
         <*> decodeList
-    toError 0x0015 m = WriteFailure m
+    toError 0x1500 m = WriteFailure m
         <$> decodeConsistency
         <*> decodeInt
         <*> decodeInt

@@ -37,7 +37,7 @@ data Version
     = V2 -- ^ version 2
     | V3 -- ^ version 3
     | V4 -- ^ version 4
-    deriving (Eq, Show)
+    deriving (Eq, Ord, Show)
 
 -- | The CQL version (not the binary protocol version).
 data CqlVersion

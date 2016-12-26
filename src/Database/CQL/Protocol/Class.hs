@@ -47,6 +47,24 @@ instance Cql Bool where
     fromCql _              = Left "Expected CqlBoolean."
 
 ------------------------------------------------------------------------------
+-- Int8
+
+instance Cql Int8 where
+    ctype = Tagged TinyIntColumn
+    toCql = CqlTinyInt
+    fromCql (CqlTinyInt i) = Right i
+    fromCql _              = Left "Expected CqlTinyInt."
+
+------------------------------------------------------------------------------
+-- Int16
+
+instance Cql Int16 where
+    ctype = Tagged SmallIntColumn
+    toCql = CqlSmallInt
+    fromCql (CqlSmallInt i) = Right i
+    fromCql _               = Left "Expected CqlSmallInt."
+
+------------------------------------------------------------------------------
 -- Int32
 
 instance Cql Int32 where
