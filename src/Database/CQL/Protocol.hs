@@ -105,6 +105,8 @@ module Database.CQL.Protocol
 
       -- * Response
     , Response (..)
+    , warnings
+    , traceId
     , unpack
 
       -- ** Ready

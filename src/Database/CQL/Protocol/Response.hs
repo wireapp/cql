@@ -4,6 +4,8 @@
 
 module Database.CQL.Protocol.Response
     ( Response            (..)
+    , warnings
+    , traceId
     , unpack
 
       -- ** Ready
@@ -91,6 +93,28 @@ data Response k a b
     | RsResult        (Maybe UUID) [Text] !(Result k a b)
     | RsEvent         (Maybe UUID) [Text] !Event
     deriving Show
+
+-- | Get server warnings from response if any.
+warnings :: Response k a b -> [Text]
+warnings (RsError         _ w _) = w
+warnings (RsReady         _ w _) = w
+warnings (RsAuthenticate  _ w _) = w
+warnings (RsAuthChallenge _ w _) = w
+warnings (RsAuthSuccess   _ w _) = w
+warnings (RsSupported     _ w _) = w
+warnings (RsResult        _ w _) = w
+warnings (RsEvent         _ w _) = w
+
+-- | Get server trace ID from response if any.
+traceId :: Response k a b -> Maybe UUID
+traceId (RsError         x _ _) = x
+traceId (RsReady         x _ _) = x
+traceId (RsAuthenticate  x _ _) = x
+traceId (RsAuthChallenge x _ _) = x
+traceId (RsAuthSuccess   x _ _) = x
+traceId (RsSupported     x _ _) = x
+traceId (RsResult        x _ _) = x
+traceId (RsEvent         x _ _) = x
 
 -- | Deserialise a 'Response' from the given 'ByteString'.
 unpack :: (Tuple a, Tuple b)
