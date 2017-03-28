@@ -10,6 +10,8 @@ import Data.UUID (UUID)
 
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.List            as List
+import qualified Data.Set             as Set
+import qualified Data.Map.Strict      as Map
 import qualified Data.Text.Lazy       as LT
 
 newtype Keyspace = Keyspace
@@ -34,8 +36,7 @@ instance IsString (QueryString k a b) where
 
 -- | CQL binary protocol version.
 data Version
-    = V2 -- ^ version 2
-    | V3 -- ^ version 3
+    = V3 -- ^ version 3
     | V4 -- ^ version 4
     deriving (Eq, Ord, Show)
 
@@ -174,11 +175,17 @@ newtype Ascii    = Ascii    { fromAscii    :: Text          } deriving (Eq, Ord,
 newtype Blob     = Blob     { fromBlob     :: LB.ByteString } deriving (Eq, Ord, Show)
 newtype Counter  = Counter  { fromCounter  :: Int64         } deriving (Eq, Ord, Show)
 newtype TimeUuid = TimeUuid { fromTimeUuid :: UUID          } deriving (Eq, Ord, Show)
-newtype Set a    = Set      { fromSet      :: [a]           } deriving (Show)
-newtype Map a b  = Map      { fromMap      :: [(a, b)]      } deriving (Show)
+newtype Set a    = Set      { fromSet      :: [a]           } deriving Show
+newtype Map a b  = Map      { fromMap      :: [(a, b)]      } deriving Show
 
 instance IsString Ascii where
     fromString = Ascii . pack
+
+instance (Eq a, Ord a) => Eq (Set a) where
+    a == b = Set.fromList (fromSet a) == Set.fromList (fromSet b)
+
+instance (Eq k, Eq v, Ord k) => Eq (Map k v) where
+    a == b = Map.fromList (fromMap a) == Map.fromList (fromMap b)
 
 -- | A CQL value. The various constructors correspond to CQL data-types for
 -- individual columns in Cassandra.
@@ -203,8 +210,8 @@ data Value
     | CqlList      [Value]
     | CqlSet       [Value]
     | CqlMap       [(Value, Value)]
-    | CqlTuple     [Value]             -- ^ binary protocol version >= 3
-    | CqlUdt       [(Text, Value)]     -- ^ binary protocol version >= 3
+    | CqlTuple     [Value]
+    | CqlUdt       [(Text, Value)]
     | CqlDate      !Int32
     | CqlTime      !Int64
     | CqlSmallInt  !Int16

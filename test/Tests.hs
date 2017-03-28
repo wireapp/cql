@@ -28,8 +28,7 @@ import qualified Data.Text            as T
 
 tests :: TestTree
 tests = testGroup "Codec"
-    [ testProperty "V2: getValue . putValue = id" (getPutIdentity :: Val V2 -> Property)
-    , testProperty "V3: getValue . putValue = id" (getPutIdentity :: Val V3 -> Property)
+    [ testProperty "V3: getValue . putValue = id" (getPutIdentity :: Val V3 -> Property)
     , testProperty "V4: getValue . putValue = id" (getPutIdentity :: Val V4 -> Property)
     , testProperty "toCql . fromCql = id" toCqlFromCqlIdentity
     , testGroup "Integrals"
@@ -103,19 +102,16 @@ typeof (CqlUdt   x)        = UdtColumn "" (map (second typeof) x)
 
 genValue :: Version -> Gen Value
 genValue v =
-    oneof [ simple v
-          , CqlMaybe <$> oneof [Just <$> simple v, return Nothing]
-          , CqlList  <$> many
-          , CqlSet   <$> many
-          , CqlMap   <$> (zip <$> many <*> many)
+    oneof [ gen v
+          , CqlMaybe <$> oneof [Just <$> gen v, pure Nothing]
           ]
   where
-    many      = simple v >>= listOf . return
-    simple V2 = oneof version2
-    simple V3 = oneof version3
-    simple V4 = oneof version4
+    many   = gen v >>= listOf  . return
+    many1  = gen v >>= listOf1 . return
+    gen V3 = oneof version3
+    gen V4 = oneof version4
 
-    version2 =
+    version3 =
         [ CqlAscii     <$> arbitrary
         , CqlBigInt    <$> arbitrary
         , CqlBlob      <$> arbitrary
@@ -132,8 +128,11 @@ genValue v =
         , CqlText      <$> arbitrary
         , CqlDecimal   <$> arbitrary
         , CqlVarInt    <$> arbitrary
+        , CqlList      <$> many
+        , CqlSet       <$> many
+        , CqlMap       <$> (zip <$> many <*> many)
+        , CqlTuple     <$> many1
         ]
-    version3 = version2
     version4 = version3 ++
         [ CqlTime      <$> arbitrary
         , CqlDate      <$> arbitrary
@@ -146,12 +145,8 @@ data Val v = Val
     , value   :: !Value
     } deriving Show
 
-data V2
 data V3
 data V4
-
-instance Arbitrary (Val V2) where
-    arbitrary = Val V2 <$> genValue V2
 
 instance Arbitrary (Val V3) where
     arbitrary = Val V3 <$> genValue V3

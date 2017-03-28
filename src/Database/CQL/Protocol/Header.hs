@@ -87,10 +87,8 @@ header v = runGetLazy (decodeHeader v)
 mapVersion :: Version -> Word8
 mapVersion V4 = 4
 mapVersion V3 = 3
-mapVersion V2 = 2
 
 toVersion :: Word8 -> Get Version
-toVersion 2 = return V2
 toVersion 3 = return V3
 toVersion 4 = return V4
 toVersion w = fail $ "decode-version: unknown: " ++ show w
@@ -126,12 +124,10 @@ fromStreamId (StreamId i) = fromIntegral i
 encodeStreamId :: Version -> Putter StreamId
 encodeStreamId V4 (StreamId x) = encodeSignedShort (fromIntegral x)
 encodeStreamId V3 (StreamId x) = encodeSignedShort (fromIntegral x)
-encodeStreamId V2 (StreamId x) = encodeSignedByte (fromIntegral x)
 
 decodeStreamId :: Version -> Get StreamId
 decodeStreamId V4 = StreamId <$> decodeSignedShort
 decodeStreamId V3 = StreamId <$> decodeSignedShort
-decodeStreamId V2 = StreamId . fromIntegral <$> decodeSignedByte
 
 ------------------------------------------------------------------------------
 -- Flags

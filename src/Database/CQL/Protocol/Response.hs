@@ -70,7 +70,6 @@ import Network.Socket (SockAddr)
 import Prelude
 
 import qualified Data.ByteString.Lazy as LB
-import qualified Data.Text            as T
 
 ------------------------------------------------------------------------------
 -- Response
@@ -352,10 +351,6 @@ decodeChange V3 = decodeString >>= fromString
     fromString "TABLE"    = TableChange    <$> decodeKeyspace <*> decodeTable
     fromString "TYPE"     = TypeChange     <$> decodeKeyspace <*> decodeString
     fromString other      = fail $ "decode-change V3: unknown: " ++ show other
-decodeChange V2 = do
-    k <- decodeKeyspace
-    t <- decodeTable
-    return $ if T.null (unTable t) then KeyspaceChange k else TableChange k t
 
 ------------------------------------------------------------------------------
 -- EVENT
