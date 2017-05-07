@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell     #-}
 
 module Database.CQL.Protocol.Class (Cql (..)) where
 
@@ -14,6 +15,8 @@ import Data.Time.Clock.POSIX
 import Data.UUID (UUID)
 import Database.CQL.Protocol.Types
 import Prelude
+
+import qualified Database.CQL.Protocol.Tuple.TH as Tuples
 
 -- | A type that can be converted from and to some CQL 'Value'.
 --
@@ -241,23 +244,4 @@ instance Cql a => Cql (Set a) where
     fromCql (CqlSet a) = Set <$> mapM fromCql a
     fromCql _          = Left "Expected CqlSet."
 
--- Tuple instances ----------------------------------------------------------
-
-instance (Cql a, Cql b) => Cql (a, b) where
-    ctype = Tagged $ TupleColumn
-        [ untag (ctype :: Tagged a ColumnType)
-        , untag (ctype :: Tagged b ColumnType)
-        ]
-    toCql (a, b) = CqlTuple [toCql a, toCql b]
-    fromCql (CqlTuple [a, b]) = (,) <$> fromCql a <*> fromCql b
-    fromCql _                 = Left "Expected CqlTuple with 2 elements."
-
-instance (Cql a, Cql b, Cql c) => Cql (a, b, c) where
-    ctype = Tagged $ TupleColumn
-        [ untag (ctype :: Tagged a ColumnType)
-        , untag (ctype :: Tagged b ColumnType)
-        , untag (ctype :: Tagged c ColumnType)
-        ]
-    toCql (a, b, c) = CqlTuple [toCql a, toCql b, toCql c]
-    fromCql (CqlTuple [a, b, c]) = (,,) <$> fromCql a <*> fromCql b <*> fromCql c
-    fromCql _                    = Left "Expected CqlTuple with 3 elements."
+Tuples.genCqlInstances 16

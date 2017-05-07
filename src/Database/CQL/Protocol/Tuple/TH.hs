@@ -5,89 +5,10 @@ module Database.CQL.Protocol.Tuple.TH where
 
 import Control.Applicative
 import Control.Monad
-import Data.Functor.Identity
-import Data.Serialize
-import Data.Vector (Vector, (!?))
-import Data.Word
-import Database.CQL.Protocol.Class
-import Database.CQL.Protocol.Codec (putValue, getValue)
-import Database.CQL.Protocol.Types
 import Language.Haskell.TH
 import Prelude
 
-import qualified Data.Vector as Vec
-
-------------------------------------------------------------------------------
--- Row
-
--- | A row is a vector of 'Value's.
-data Row = Row
-    { types  :: !([ColumnType])
-    , values :: !(Vector Value)
-    } deriving (Eq, Show)
-
--- | Convert a row element.
-fromRow :: Cql a => Int -> Row -> Either String a
-fromRow i r =
-    case values r !? i of
-        Nothing -> Left "out of bounds access"
-        Just  v -> fromCql v
-
-mkRow :: [(Value, ColumnType)] -> Row
-mkRow xs = let (v, t) = unzip xs in Row t (Vec.fromList v)
-
-rowLength :: Row -> Int
-rowLength r = Vec.length (values r)
-
-columnTypes :: Row -> [ColumnType]
-columnTypes = types
-
-------------------------------------------------------------------------------
--- Tuples
-
--- Database.CQL.Protocol.Tuple does not export 'PrivateTuple' but only
--- 'Tuple' effectively turning 'Tuple' into a closed type-class.
-class PrivateTuple a where
-    count :: Tagged a Int
-    check :: Tagged a ([ColumnType] -> [ColumnType])
-    tuple :: Version -> [ColumnType] -> Get a
-    store :: Version -> Putter a
-
-class PrivateTuple a => Tuple a
-
-------------------------------------------------------------------------------
--- Manual instances
-
-instance PrivateTuple () where
-    count     = Tagged 0
-    check     = Tagged $ const []
-    tuple _ _ = return ()
-    store _   = const $ return ()
-
-instance Tuple ()
-
-instance Cql a => PrivateTuple (Identity a) where
-    count     = Tagged 1
-    check     = Tagged $ typecheck [untag (ctype :: Tagged a ColumnType)]
-    tuple v _ = Identity <$> element v ctype
-    store v (Identity a) = do
-        put (1 :: Word16)
-        putValue v (toCql a)
-
-instance Cql a => Tuple (Identity a)
-
-instance PrivateTuple Row where
-    count     = Tagged (-1)
-    check     = Tagged $ const []
-    tuple v t = Row t . Vec.fromList <$> mapM (getValue v) t
-    store v r = do
-        put (fromIntegral (rowLength r) :: Word16)
-        Vec.mapM_ (putValue v) (values r)
-
-instance Tuple Row
-
-------------------------------------------------------------------------------
--- Templated instances
+-- Templated instances ------------------------------------------------------
 
 genInstances :: Int -> Q [Dec]
 genInstances n = join <$> mapM tupleInstance [2 .. n]
@@ -112,7 +33,7 @@ tupleInstance n = do
         [ InstanceD ctx (tcon "PrivateTuple" $: tupleType)
 #endif
             [ FunD (mkName "count") [countDecl n]
-            , FunD (mkName "check") [checkDecl vnames]
+            , FunD (mkName "check") [taggedDecl (var "typecheck") vnames]
             , FunD (mkName "tuple") [td]
             , FunD (mkName "store") [sd]
             ]
@@ -128,15 +49,15 @@ countDecl n = Clause [] (NormalB body) []
   where
     body = con "Tagged" $$ litInt n
 
--- check = Tagged $
---     typecheck [ untag (ctype :: Tagged x ColumnType)
---               , untag (ctype :: Tagged y ColumnType)
---               , ...
---               ])
-checkDecl :: [Name] -> Clause
-checkDecl names = Clause [] (NormalB body) []
+-- Tagged $ ident
+--    [ untag (ctype :: Tagged x ColumnType)
+--    , untag (ctype :: Tagged y ColumnType)
+--    , ...
+--    ])
+taggedDecl :: Exp -> [Name] -> Clause
+taggedDecl ident names = Clause [] (NormalB body) []
   where
-    body  = con "Tagged" $$ (var "typecheck" $$ ListE (map fn names))
+    body  = con "Tagged" $$ (ident $$ ListE (map fn names))
     fn n  = var "untag" $$ SigE (var "ctype") (tty n)
     tty n = tcon "Tagged" $: VarT n $: tcon "ColumnType"
 
@@ -167,6 +88,73 @@ storeDecl n = do
     size         = var "put" $$ SigE (litInt n) (tcon "Word16")
     value x v    = var "putValue" $$ VarE x $$ (var "toCql" $$ VarE v)
 
+genCqlInstances :: Int -> Q [Dec]
+genCqlInstances n = join <$> mapM cqlInstances [2 .. n]
+
+-- instance (Cql a, Cql b) => Cql (a, b) where
+--     ctype = Tagged $ TupleColumn
+--         [ untag (ctype :: Tagged a ColumnType)
+--         , untag (ctype :: Tagged b ColumnType)
+--         ]
+--     toCql (a, b) = CqlTuple [toCql a, toCql b]
+--     fromCql (CqlTuple [a, b]) = (,) <$> fromCql a <*> fromCql b
+--     fromCql _                 = Left "Expected CqlTuple with 2 elements."
+cqlInstances :: Int -> Q [Dec]
+cqlInstances n = do
+    let cql = mkName "Cql"
+    vnames <- replicateM n (newName "a")
+    let vtypes    = map VarT vnames
+    let tupleType = foldl1 ($:) (TupleT n : vtypes)
+#if MIN_VERSION_template_haskell(2,10,0)
+    let ctx = map (AppT (ConT cql)) vtypes
+#else
+    let ctx = map (\t -> ClassP cql [t]) vtypes
+#endif
+    tocql   <- toCqlDecl
+    fromcql <- fromCqlDecl
+    return
+#if MIN_VERSION_template_haskell(2,11,0)
+        [ InstanceD Nothing ctx (tcon "Cql" $: tupleType)
+#else
+        [ InstanceD ctx (tcon "Cql" $: tupleType)
+#endif
+            [ FunD (mkName "ctype")   [taggedDecl (con "TupleColumn") vnames]
+            , FunD (mkName "toCql")   [tocql]
+            , FunD (mkName "fromCql") [fromcql]
+            ]
+        ]
+  where
+    toCqlDecl = do
+        names <- replicateM n (newName "x")
+        let tocql nme = var "toCql" $$ VarE nme
+        return $ Clause
+            [TupP (map VarP names)]
+            (NormalB . AppE (con "CqlTuple") $ ListE $ map tocql names)
+            []
+
+    fromCqlDecl = do
+        names <- replicateM n (newName "x")
+        Clause
+            [VarP (mkName "t")]
+            (NormalB $ CaseE (var "t")
+                [ Match (ParensP (ConP (mkName "CqlTuple") [ListP (map VarP names)]))
+                        (NormalB $ body names)
+                        []
+                , Match WildP
+                        (NormalB (con "Left" $$ failure))
+                        []
+                ])
+            <$> combine
+      where
+        body names = UInfixE (var "combine") (var "<$>") (foldl1 star (fn names))
+        star a b   = UInfixE a (var "<*>") b
+        fn names   = map (AppE (var "fromCql") . VarE) names
+        combine    = do
+            names <- replicateM n (newName "x")
+            let f = NormalB $ TupE (map VarE names)
+            return [ FunD (mkName "combine") [Clause (map VarP names) f []] ]
+        failure = LitE (StringL $ "Expected CqlTuple with " ++ show n ++ " elements")
+
 ------------------------------------------------------------------------------
 -- Helpers
 
@@ -185,27 +173,4 @@ tcon = ConT . mkName
 
 ($:) :: Type -> Type -> Type
 ($:) = AppT
-
-------------------------------------------------------------------------------
--- Implementation helpers
-
-element :: Cql a => Version -> Tagged a ColumnType -> Get a
-element v t = getValue v (untag t) >>= either fail return . fromCql
-
-typecheck :: [ColumnType] -> [ColumnType] -> [ColumnType]
-typecheck rr cc = if checkAll (===) rr cc then [] else rr
-  where
-    checkAll f as bs = and (zipWith f as bs)
-
-    checkField (a, b) (c, d) = a == c && b === d
-
-    TextColumn       === VarCharColumn    = True
-    VarCharColumn    === TextColumn       = True
-    (MaybeColumn  a) === b                = a === b
-    (ListColumn   a) === (ListColumn   b) = a === b
-    (SetColumn    a) === (SetColumn    b) = a === b
-    (MapColumn  a b) === (MapColumn  c d) = a === c && b === d
-    (UdtColumn a as) === (UdtColumn b bs) = a == b && checkAll checkField as bs
-    (TupleColumn as) === (TupleColumn bs) = checkAll (===) as bs
-    a                === b                = a == b
 
