@@ -1,6 +1,7 @@
 4.0.0
 -----
-- Add support for CQL V4 binary protocol
+- Add support for CQL V4 binary protocol.
+- Remove support for CQL V2 binary protocol.
 
 3.1.1
 -----
