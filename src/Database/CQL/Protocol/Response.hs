@@ -290,12 +290,11 @@ decodePreparedV4 = do
     f <- decodeInt
     n <- decodeInt
     pkCount <- decodeInt
-    if hasNoMetaData f
-        then return $ MetaData n Nothing [] []
-        else MetaData n Nothing <$> decodeSpecs n (hasGlobalSpec f) <*> replicateM (fromIntegral pkCount) decodeInt
+    pkis <- replicateM (fromIntegral pkCount) decodeShort
+    specs <- decodeSpecs n (hasGlobalSpec f)
+    return $ MetaData n Nothing specs (fromIntegral <$> pkis)
   where
     hasGlobalSpec f = f `testBit` 0
-    hasNoMetaData f = f `testBit` 2
 
     decodeSpecs n True = do
         k <- decodeKeyspace
