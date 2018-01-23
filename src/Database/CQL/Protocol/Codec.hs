@@ -306,7 +306,7 @@ decodeConsistency = decodeShort >>= mapCode
         mapCode 0x07 = return EachQuorum
         mapCode 0x08 = return Serial
         mapCode 0x09 = return LocalSerial
-        mapCode 0x10 = return LocalOne
+        mapCode 0x0A = return LocalOne
         mapCode code = fail $ "decode-consistency: unknown: " ++ show code
 
 ------------------------------------------------------------------------------
