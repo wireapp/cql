@@ -250,7 +250,7 @@ encodeSockAddr (SockAddrInet6 p _ (a, b, c, d) _) = do
     putWord32host d
     putWord32be (fromIntegral p)
 encodeSockAddr (SockAddrUnix _) = fail "encode-socket: unix address not allowed"
-#if MIN_VERSION_network(2,6,1)
+#if MIN_VERSION_network(2,6,1) && !MIN_VERSION_network(3,0,0)
 encodeSockAddr (SockAddrCan _) = fail "encode-socket: can address not allowed"
 #endif
 
