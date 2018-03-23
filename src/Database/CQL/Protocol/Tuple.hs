@@ -35,7 +35,7 @@ import qualified Data.Vector as Vec
 
 -- | A row is a vector of 'Value's.
 data Row = Row
-    { types  :: !([ColumnType])
+    { types  :: ![ColumnType]
     , values :: !(Vector Value)
     } deriving (Eq, Show)
 
@@ -90,7 +90,7 @@ instance Cql a => Tuple (Identity a)
 instance PrivateTuple Row where
     count     = Tagged (-1)
     check     = Tagged $ const []
-    tuple v t = Row t . Vec.fromList <$> mapM (getValue v) t
+    tuple v t = Row t . Vec.fromList <$> mapM (getValue v . MaybeColumn) t
     store v r = do
         put (fromIntegral (rowLength r) :: Word16)
         Vec.mapM_ (putValue v) (values r)
