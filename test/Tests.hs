@@ -101,17 +101,28 @@ typeof (CqlTuple x)        = TupleColumn (map typeof x)
 typeof (CqlUdt   x)        = UdtColumn "" (map (second typeof) x)
 
 genValue :: Version -> Gen Value
-genValue v =
-    oneof [ gen v
-          , CqlMaybe <$> oneof [Just <$> gen v, pure Nothing]
+genValue v = sized $ \n ->
+    oneof [ gen v n
+          , CqlMaybe <$> oneof [Just <$> gen v n, pure Nothing]
           ]
   where
-    many   = gen v >>= listOf  . return
-    many1  = gen v >>= listOf1 . return
-    gen V3 = oneof version3
-    gen V4 = oneof version4
+    many   n = gen v (n `div` 2) >>= resize n . listOf  . return
+    many1  n = gen v (n `div` 2) >>= resize n . listOf1 . return
+    gen V3 n = oneof (v3 n)
+    gen V4 n = oneof (v4 n)
 
-    version3 =
+    v3 0 = v3Leaf
+    v3 n = v3Leaf ++
+        [ CqlList      <$> many n
+        , CqlSet       <$> many n
+        , CqlMap       <$> (zip <$> many n <*> many n)
+        , CqlTuple     <$> many1 n
+        ]
+
+    v4 0 = v4Leaf ++ v3Leaf
+    v4 n = v4Leaf ++ v3 n
+
+    v3Leaf =
         [ CqlAscii     <$> arbitrary
         , CqlBigInt    <$> arbitrary
         , CqlBlob      <$> arbitrary
@@ -128,12 +139,9 @@ genValue v =
         , CqlText      <$> arbitrary
         , CqlDecimal   <$> arbitrary
         , CqlVarInt    <$> arbitrary
-        , CqlList      <$> many
-        , CqlSet       <$> many
-        , CqlMap       <$> (zip <$> many <*> many)
-        , CqlTuple     <$> many1
         ]
-    version4 = version3 ++
+
+    v4Leaf =
         [ CqlTime      <$> arbitrary
         , CqlDate      <$> arbitrary
         , CqlSmallInt  <$> arbitrary
