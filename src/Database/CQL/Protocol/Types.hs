@@ -65,18 +65,20 @@ noCompression :: Compression
 noCompression = Compression None Just Just
 
 -- | Consistency level.
+--
+-- See: <https://docs.datastax.com/en/cassandra/latest/cassandra/dml/dmlConfigConsistency.html Consistency>
 data Consistency
     = Any
     | One
+    | LocalOne
     | Two
     | Three
     | Quorum
-    | All
     | LocalQuorum
-    | EachQuorum
-    | Serial
-    | LocalOne
-    | LocalSerial
+    | All
+    | EachQuorum  -- ^ Only for write queries.
+    | Serial      -- ^ Only for read queries.
+    | LocalSerial -- ^ Only for read queries.
     deriving (Eq, Show)
 
 -- | An opcode is a tag to distinguish protocol frame bodies.
@@ -224,6 +226,10 @@ newtype Tagged a b = Tagged { untag :: b }
 retag :: Tagged a c -> Tagged b c
 retag = Tagged . untag
 
+-- | Type tag for read queries, i.e. 'QueryString R a b'.
 data R
+-- | Type tag for write queries, i.e. 'QueryString W a b'.
 data W
+-- | Type tag for schema queries, i.e. 'QueryString S a b'.
 data S
+
