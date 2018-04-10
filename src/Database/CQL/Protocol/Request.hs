@@ -251,9 +251,8 @@ encodeBatch v (Batch t q c s) = do
     encodeShort (fromIntegral (length q))
     mapM_ (encodeBatchQuery v) q
     encodeConsistency c
-    when (v == V3) $ do
-        put batchFlags
-        traverse_ encodeConsistency (mapCons <$> s)
+    put batchFlags
+    traverse_ encodeConsistency (mapCons <$> s)
   where
     batchFlags :: Word8
     batchFlags = if isJust s then 0x10 else 0x0
