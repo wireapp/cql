@@ -2,6 +2,10 @@
 -----
 - Add support for CQL V4 binary protocol.
 - Remove support for CQL V2 binary protocol.
+- Documentation updates.
+- Bugfix: The generic 'Row' type did not account for null values
+  upon decoding.
+- Add a minimal stack.yaml for stack builds.
 
 3.1.1
 -----
