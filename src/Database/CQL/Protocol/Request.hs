@@ -251,9 +251,8 @@ encodeBatch v (Batch t q c s) = do
     encodeShort (fromIntegral (length q))
     mapM_ (encodeBatchQuery v) q
     encodeConsistency c
-    when (v == V3) $ do
-        put batchFlags
-        traverse_ encodeConsistency (mapCons <$> s)
+    put batchFlags
+    traverse_ encodeConsistency (mapCons <$> s)
   where
     batchFlags :: Word8
     batchFlags = if isJust s then 0x10 else 0x0
@@ -293,18 +292,38 @@ encodeBatchQuery n (BatchPrepared (QueryId i) v)  = do
 
 -- | Query parameters.
 data QueryParams a = QueryParams
-    { consistency       :: !Consistency -- ^ consistency leven to use
-    , skipMetaData      :: !Bool        -- ^ skip metadata in response
-    , values            :: a            -- ^ query arguments
-    , pageSize          :: Maybe Int32  -- ^ desired result set size
-    , queryPagingState  :: Maybe PagingState
+    { consistency :: !Consistency
+        -- ^ (Regular) consistency level to use.
+    , skipMetaData :: !Bool
+        -- ^ Whether to omit the metadata in the 'Response'
+        -- of the query. This is an optimisation only relevant for
+        -- use with prepared queries, for which the metadata obtained
+        -- from the 'PreparedResult' may be reused.
+    , values :: a
+        -- ^ The bound parameters of the query.
+    , pageSize :: Maybe Int32
+        -- ^ The desired maximum result set size.
+    , queryPagingState :: Maybe PagingState
+        -- ^ The current paging state that determines the "offset"
+        -- of the results to return for a read query.
     , serialConsistency :: Maybe SerialConsistency
+        -- ^ Serial consistency level to use for conditional updates
+        -- (aka "lightweight transactions"). Irrelevant for any other queries.
+    , enableTracing :: Maybe Bool
+        -- ^ Whether tracing should be enabled for the query, in which case the
+        -- 'Response' will carry a 'traceId'.
     } deriving Show
 
--- | Consistency level for the serial phase of conditional updates.
+-- | Consistency level for the serial phase of conditional updates
+-- (aka "lightweight transactions").
+--
+-- See: <https://docs.datastax.com/en/cassandra/latest/cassandra/dml/dmlConfigSerialConsistency.html SerialConsistency>
 data SerialConsistency
     = SerialConsistency
+        -- ^ Default. Quorum-based linearizable consistency.
     | LocalSerialConsistency
+        -- ^ Like 'SerialConsistency' except confined to a single (logical)
+        -- data center.
     deriving Show
 
 encodeQueryParams :: forall a. Tuple a => Version -> Putter (QueryParams a)

@@ -1,11 +1,12 @@
 name:                 cql
-version:              3.1.1
+version:              4.0.0
 synopsis:             Cassandra CQL binary protocol.
 stability:            experimental
 license:              OtherLicense
 license-file:         LICENSE
 author:               Toralf Wittner, Roman S. Borschel
-maintainer:           Toralf Wittner <tw@dtex.org>
+maintainer:           Toralf Wittner <tw@dtex.org>,
+                      Roman S. Borschel <roman@pkaboo.org>
 copyright:            (C) 2014-2015 Toralf Wittner, Roman S. Borschel
 homepage:             https://gitlab.com/twittner/cql/
 bug-reports:          https://gitlab.com/twittner/cql/issues
@@ -19,9 +20,9 @@ extra-source-files:   README.md
 
 description:
     Implementation of Cassandra's CQL Binary Protocol
-    <https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v2.spec Version 2>
+    <https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v3.spec Version 3>
     and
-    <https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v3.spec Version 3>.
+    <https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec Version 4>.
     .
     It provides encoding and decoding functionality as well as representations
     of the various protocol related types.
@@ -64,6 +65,7 @@ library
           base             >= 4.5    && < 5.0
         , bytestring       >= 0.10
         , cereal           >= 0.3
+        , containers       >= 0.5
         , Decimal          >= 0.3
         , iproute          >= 1.3
         , network          >= 2.4

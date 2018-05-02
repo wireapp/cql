@@ -10,6 +10,8 @@ import Data.UUID (UUID)
 
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.List            as List
+import qualified Data.Set             as Set
+import qualified Data.Map.Strict      as Map
 import qualified Data.Text.Lazy       as LT
 
 newtype Keyspace = Keyspace
@@ -34,9 +36,9 @@ instance IsString (QueryString k a b) where
 
 -- | CQL binary protocol version.
 data Version
-    = V2 -- ^ version 2
-    | V3 -- ^ version 3
-    deriving (Eq, Show)
+    = V3 -- ^ version 3
+    | V4 -- ^ version 4
+    deriving (Eq, Ord, Show)
 
 -- | The CQL version (not the binary protocol version).
 data CqlVersion
@@ -63,18 +65,20 @@ noCompression :: Compression
 noCompression = Compression None Just Just
 
 -- | Consistency level.
+--
+-- See: <https://docs.datastax.com/en/cassandra/latest/cassandra/dml/dmlConfigConsistency.html Consistency>
 data Consistency
     = Any
     | One
+    | LocalOne
     | Two
     | Three
     | Quorum
-    | All
     | LocalQuorum
-    | EachQuorum
-    | Serial
-    | LocalOne
-    | LocalSerial
+    | All
+    | EachQuorum  -- ^ Only for write queries.
+    | Serial      -- ^ Only for read queries.
+    | LocalSerial -- ^ Only for read queries.
     deriving (Eq, Show)
 
 -- | An opcode is a tag to distinguish protocol frame bodies.
@@ -122,6 +126,10 @@ data ColumnType
     | MapColumn   !ColumnType !ColumnType
     | TupleColumn [ColumnType]
     | UdtColumn   !Text [(Text, ColumnType)]
+    | DateColumn
+    | TimeColumn
+    | SmallIntColumn
+    | TinyIntColumn
     deriving (Eq)
 
 instance Show ColumnType where
@@ -142,6 +150,10 @@ instance Show ColumnType where
     show VarIntColumn      = "varint"
     show TimeUuidColumn    = "timeuuid"
     show InetColumn        = "inet"
+    show DateColumn        = "date"
+    show TimeColumn        = "time"
+    show SmallIntColumn    = "smallint"
+    show TinyIntColumn     = "tinyint"
     show (MaybeColumn a)   = show a ++ "?"
     show (ListColumn a)    = showString "list<" . shows a . showString ">" $ ""
     show (SetColumn a)     = showString "set<" . shows a . showString ">" $ ""
@@ -165,11 +177,17 @@ newtype Ascii    = Ascii    { fromAscii    :: Text          } deriving (Eq, Ord,
 newtype Blob     = Blob     { fromBlob     :: LB.ByteString } deriving (Eq, Ord, Show)
 newtype Counter  = Counter  { fromCounter  :: Int64         } deriving (Eq, Ord, Show)
 newtype TimeUuid = TimeUuid { fromTimeUuid :: UUID          } deriving (Eq, Ord, Show)
-newtype Set a    = Set      { fromSet      :: [a]           } deriving (Show)
-newtype Map a b  = Map      { fromMap      :: [(a, b)]      } deriving (Show)
+newtype Set a    = Set      { fromSet      :: [a]           } deriving Show
+newtype Map a b  = Map      { fromMap      :: [(a, b)]      } deriving Show
 
 instance IsString Ascii where
     fromString = Ascii . pack
+
+instance (Eq a, Ord a) => Eq (Set a) where
+    a == b = Set.fromList (fromSet a) == Set.fromList (fromSet b)
+
+instance (Eq k, Eq v, Ord k) => Eq (Map k v) where
+    a == b = Map.fromList (fromMap a) == Map.fromList (fromMap b)
 
 -- | A CQL value. The various constructors correspond to CQL data-types for
 -- individual columns in Cassandra.
@@ -194,8 +212,12 @@ data Value
     | CqlList      [Value]
     | CqlSet       [Value]
     | CqlMap       [(Value, Value)]
-    | CqlTuple     [Value]             -- ^ binary protocol version >= 3
-    | CqlUdt       [(Text, Value)]     -- ^ binary protocol version >= 3
+    | CqlTuple     [Value]
+    | CqlUdt       [(Text, Value)]
+    | CqlDate      !Int32
+    | CqlTime      !Int64
+    | CqlSmallInt  !Int16
+    | CqlTinyInt   !Int8
     deriving (Eq, Show)
 
 -- | Tag some value with a phantom type.
@@ -204,6 +226,10 @@ newtype Tagged a b = Tagged { untag :: b }
 retag :: Tagged a c -> Tagged b c
 retag = Tagged . untag
 
+-- | Type tag for read queries, i.e. 'QueryString R a b'.
 data R
+-- | Type tag for write queries, i.e. 'QueryString W a b'.
 data W
+-- | Type tag for schema queries, i.e. 'QueryString S a b'.
 data S
+

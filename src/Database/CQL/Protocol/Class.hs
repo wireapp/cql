@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell     #-}
 
 module Database.CQL.Protocol.Class (Cql (..)) where
 
@@ -14,6 +15,8 @@ import Data.Time.Clock.POSIX
 import Data.UUID (UUID)
 import Database.CQL.Protocol.Types
 import Prelude
+
+import qualified Database.CQL.Protocol.Tuple.TH as Tuples
 
 -- | A type that can be converted from and to some CQL 'Value'.
 --
@@ -45,6 +48,24 @@ instance Cql Bool where
     toCql = CqlBoolean
     fromCql (CqlBoolean b) = Right b
     fromCql _              = Left "Expected CqlBoolean."
+
+------------------------------------------------------------------------------
+-- Int8
+
+instance Cql Int8 where
+    ctype = Tagged TinyIntColumn
+    toCql = CqlTinyInt
+    fromCql (CqlTinyInt i) = Right i
+    fromCql _              = Left "Expected CqlTinyInt."
+
+------------------------------------------------------------------------------
+-- Int16
+
+instance Cql Int16 where
+    ctype = Tagged SmallIntColumn
+    toCql = CqlSmallInt
+    fromCql (CqlSmallInt i) = Right i
+    fromCql _               = Left "Expected CqlSmallInt."
 
 ------------------------------------------------------------------------------
 -- Int32
@@ -222,3 +243,5 @@ instance Cql a => Cql (Set a) where
     toCql (Set a) = CqlSet $ map toCql a
     fromCql (CqlSet a) = Set <$> mapM fromCql a
     fromCql _          = Left "Expected CqlSet."
+
+Tuples.genCqlInstances 16

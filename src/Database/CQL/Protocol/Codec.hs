@@ -250,7 +250,7 @@ encodeSockAddr (SockAddrInet6 p _ (a, b, c, d) _) = do
     putWord32host d
     putWord32be (fromIntegral p)
 encodeSockAddr (SockAddrUnix _) = fail "encode-socket: unix address not allowed"
-#if MIN_VERSION_network(2,6,1)
+#if MIN_VERSION_network(2,6,1) && !MIN_VERSION_network(3,0,0)
 encodeSockAddr (SockAddrCan _) = fail "encode-socket: can address not allowed"
 #endif
 
@@ -306,7 +306,7 @@ decodeConsistency = decodeShort >>= mapCode
         mapCode 0x07 = return EachQuorum
         mapCode 0x08 = return Serial
         mapCode 0x09 = return LocalSerial
-        mapCode 0x10 = return LocalOne
+        mapCode 0x0A = return LocalOne
         mapCode code = fail $ "decode-consistency: unknown: " ++ show code
 
 ------------------------------------------------------------------------------
@@ -374,6 +374,10 @@ decodeColumnType = decodeShort >>= toType
     toType 0x000E = return VarIntColumn
     toType 0x000F = return TimeUuidColumn
     toType 0x0010 = return InetColumn
+    toType 0x0011 = return DateColumn
+    toType 0x0012 = return TimeColumn
+    toType 0x0013 = return SmallIntColumn
+    toType 0x0014 = return TinyIntColumn
     toType 0x0020 = ListColumn  <$> (decodeShort >>= toType)
     toType 0x0021 = MapColumn   <$> (decodeShort >>= toType) <*> (decodeShort >>= toType)
     toType 0x0022 = SetColumn   <$> (decodeShort >>= toType)
@@ -401,45 +405,20 @@ decodePagingState = fmap PagingState <$> decodeBytes
 -- Value
 
 putValue :: Version -> Putter Value
-putValue V3 (CqlList x)        = toBytes 4 $ do
-    encodeInt (fromIntegral (length x))
-    mapM_ (toBytes 4 . putNative V3) x
-putValue V2 (CqlList x)        = toBytes 4 $ do
-    encodeShort (fromIntegral (length x))
-    mapM_ (toBytes 2 . putNative V2) x
-putValue V3 (CqlSet x)         = toBytes 4 $ do
-    encodeInt (fromIntegral (length x))
-    mapM_ (toBytes 4 . putNative V3) x
-putValue V2 (CqlSet x)         = toBytes 4 $ do
-    encodeShort (fromIntegral (length x))
-    mapM_ (toBytes 2 . putNative V2) x
-putValue V3 (CqlMap x)         = toBytes 4 $ do
-    encodeInt (fromIntegral (length x))
-    forM_ x $ \(k, v) -> toBytes 4 (putNative V3 k) >> toBytes 4 (putNative V3 v)
-putValue V2 (CqlMap x)         = toBytes 4 $ do
-    encodeShort (fromIntegral (length x))
-    forM_ x $ \(k, v) -> toBytes 2 (putNative V2 k) >> toBytes 2 (putNative V2 v)
-putValue V3 (CqlTuple x)       =
-    toBytes 4 $ putByteString $ runPut (mapM_ (putValue V3) x)
-putValue _ (CqlMaybe Nothing)  = put (-1 :: Int32)
-putValue v (CqlMaybe (Just x)) = putValue v x
-putValue v value               = toBytes 4 $ putNative v value
-
-putNative :: Version -> Putter Value
-putNative _ (CqlCustom x)    = putLazyByteString x
-putNative _ (CqlBoolean x)   = putWord8 $ if x then 1 else 0
-putNative _ (CqlInt x)       = put x
-putNative _ (CqlBigInt x)    = put x
-putNative _ (CqlFloat x)     = putFloat32be x
-putNative _ (CqlDouble x)    = putFloat64be x
-putNative _ (CqlText x)      = putByteString (T.encodeUtf8 x)
-putNative _ (CqlUuid x)      = encodeUUID x
-putNative _ (CqlTimeUuid x)  = encodeUUID x
-putNative _ (CqlTimestamp x) = put x
-putNative _ (CqlAscii x)     = putByteString (T.encodeUtf8 x)
-putNative _ (CqlBlob x)      = putLazyByteString x
-putNative _ (CqlCounter x)   = put x
-putNative _ (CqlInet x)      = case x of
+putValue _ (CqlCustom x)    = toBytes $ putLazyByteString x
+putValue _ (CqlBoolean x)   = toBytes $ putWord8 $ if x then 1 else 0
+putValue _ (CqlInt x)       = toBytes $ put x
+putValue _ (CqlBigInt x)    = toBytes $ put x
+putValue _ (CqlFloat x)     = toBytes $ putFloat32be x
+putValue _ (CqlDouble x)    = toBytes $ putFloat64be x
+putValue _ (CqlText x)      = toBytes $ putByteString (T.encodeUtf8 x)
+putValue _ (CqlUuid x)      = toBytes $ encodeUUID x
+putValue _ (CqlTimeUuid x)  = toBytes $ encodeUUID x
+putValue _ (CqlTimestamp x) = toBytes $ put x
+putValue _ (CqlAscii x)     = toBytes $ putByteString (T.encodeUtf8 x)
+putValue _ (CqlBlob x)      = toBytes $ putLazyByteString x
+putValue _ (CqlCounter x)   = toBytes $ put x
+putValue _ (CqlInet x)      = toBytes $ case x of
     IPv4 i -> putWord32le (toHostAddress i)
     IPv6 i -> do
         let (a, b, c, d) = toHostAddress6 i
@@ -447,66 +426,63 @@ putNative _ (CqlInet x)      = case x of
         putWord32host b
         putWord32host c
         putWord32host d
-putNative _ (CqlVarInt x)   = integer2bytes x
-putNative _ (CqlDecimal x)  = do
+putValue _ (CqlVarInt x)   = toBytes $ integer2bytes x
+putValue _ (CqlDecimal x)  = toBytes $ do
     put (fromIntegral (decimalPlaces x) :: Int32)
     integer2bytes (decimalMantissa x)
-putNative V3   (CqlUdt   x) = putByteString $ runPut (mapM_ (putValue V3 . snd) x)
-putNative V2 v@(CqlUdt   _) = fail $ "putNative: udt: " ++ show v
-putNative _  v@(CqlList  _) = fail $ "putNative: collection type: " ++ show v
-putNative _  v@(CqlSet   _) = fail $ "putNative: collection type: " ++ show v
-putNative _  v@(CqlMap   _) = fail $ "putNative: collection type: " ++ show v
-putNative _  v@(CqlMaybe _) = fail $ "putNative: collection type: " ++ show v
-putNative _  v@(CqlTuple _) = fail $ "putNative: tuple type: " ++ show v
+putValue V4   (CqlDate x)     = toBytes $ put x
+putValue _  v@(CqlDate _)     = fail $ "putValue: date: " ++ show v
+putValue V4   (CqlTime x)     = toBytes $ put x
+putValue _  v@(CqlTime _)     = fail $ "putValue: time: " ++ show v
+putValue V4   (CqlSmallInt x) = toBytes $ put x
+putValue _  v@(CqlSmallInt _) = fail $ "putValue: smallint: " ++ show v
+putValue V4   (CqlTinyInt x)  = toBytes $ put x
+putValue _  v@(CqlTinyInt _)  = fail $ "putValue: tinyint: " ++ show v
+putValue v    (CqlUdt   x)    = toBytes $ mapM_ (putValue v . snd) x
+putValue v    (CqlList x)     = toBytes $ do
+    encodeInt (fromIntegral (length x))
+    mapM_ (putValue v) x
+putValue v (CqlSet x) = toBytes $ do
+    encodeInt (fromIntegral (length x))
+    mapM_ (putValue v) x
+putValue v (CqlMap x) = toBytes $ do
+    encodeInt (fromIntegral (length x))
+    forM_ x $ \(k, w) -> putValue v k >> putValue v w
+putValue v (CqlTuple x)        = toBytes $ mapM_ (putValue v) x
+putValue _ (CqlMaybe Nothing)  = put (-1 :: Int32)
+putValue v (CqlMaybe (Just x)) = putValue v x
 
--- Note: Empty lists, maps and sets are represented as null in cassandra.
 getValue :: Version -> ColumnType -> Get Value
-getValue V3 (ListColumn t)    = CqlList <$> (getList $ do
+getValue v (ListColumn t) = CqlList <$> getList (do
     len <- decodeInt
-    replicateM (fromIntegral len) (withBytes 4 (getNative V3 t)))
-getValue V2 (ListColumn t)    = CqlList <$> (getList $ do
-    len <- decodeShort
-    replicateM (fromIntegral len) (withBytes 2 (getNative V2 t)))
-getValue V3 (SetColumn t)     = CqlSet <$> (getList $ do
+    replicateM (fromIntegral len) (getValue v t))
+getValue v (SetColumn t) = CqlSet <$> getList (do
     len <- decodeInt
-    replicateM (fromIntegral len) (withBytes 4 (getNative V3 t)))
-getValue V2 (SetColumn t)     = CqlSet <$> (getList $ do
-    len <- decodeShort
-    replicateM (fromIntegral len) (withBytes 2 (getNative V2 t)))
-getValue V3 (MapColumn t u)   = CqlMap <$> (getList $ do
+    replicateM (fromIntegral len) (getValue v t))
+getValue v (MapColumn t u) = CqlMap <$> getList (do
     len <- decodeInt
-    replicateM (fromIntegral len)
-               ((,) <$> withBytes 4 (getNative V3 t) <*> withBytes 4 (getNative V3 u)))
-getValue V2 (MapColumn t u)   = CqlMap <$> (getList $ do
-    len <- decodeShort
-    replicateM (fromIntegral len)
-               ((,) <$> withBytes 2 (getNative V2 t) <*> withBytes 2 (getNative V2 u)))
-getValue V3 (TupleColumn t)   = do
-    b <- withBytes 4 remainingBytes
-    either fail return $ flip runGet b $ CqlTuple <$> mapM (getValue V3) t
-getValue v (MaybeColumn t)    = do
+    replicateM (fromIntegral len) ((,) <$> getValue v t <*> getValue v u))
+getValue v (TupleColumn t) = withBytes $ CqlTuple <$> mapM (getValue v) t
+getValue v (MaybeColumn t) = do
     n <- lookAhead (get :: Get Int32)
     if n < 0
         then uncheckedSkip 4 >> return (CqlMaybe Nothing)
         else CqlMaybe . Just <$> getValue v t
-getValue v colType            = withBytes 4 $ getNative v colType
-
-getNative :: Version -> ColumnType -> Get Value
-getNative _ (CustomColumn _) = CqlCustom <$> remainingBytesLazy
-getNative _ BooleanColumn    = CqlBoolean . (/= 0) <$> getWord8
-getNative _ IntColumn        = CqlInt <$> get
-getNative _ BigIntColumn     = CqlBigInt <$> get
-getNative _ FloatColumn      = CqlFloat  <$> getFloat32be
-getNative _ DoubleColumn     = CqlDouble <$> getFloat64be
-getNative _ TextColumn       = CqlText . T.decodeUtf8 <$> remainingBytes
-getNative _ VarCharColumn    = CqlText . T.decodeUtf8 <$> remainingBytes
-getNative _ AsciiColumn      = CqlAscii . T.decodeUtf8 <$> remainingBytes
-getNative _ BlobColumn       = CqlBlob <$> remainingBytesLazy
-getNative _ UuidColumn       = CqlUuid <$> decodeUUID
-getNative _ TimeUuidColumn   = CqlTimeUuid <$> decodeUUID
-getNative _ TimestampColumn  = CqlTimestamp <$> get
-getNative _ CounterColumn    = CqlCounter <$> get
-getNative _ InetColumn       = CqlInet <$> do
+getValue _ (CustomColumn _) = withBytes $ CqlCustom <$> remainingBytesLazy
+getValue _ BooleanColumn    = withBytes $ CqlBoolean . (/= 0) <$> getWord8
+getValue _ IntColumn        = withBytes $ CqlInt <$> get
+getValue _ BigIntColumn     = withBytes $ CqlBigInt <$> get
+getValue _ FloatColumn      = withBytes $ CqlFloat  <$> getFloat32be
+getValue _ DoubleColumn     = withBytes $ CqlDouble <$> getFloat64be
+getValue _ TextColumn       = withBytes $ CqlText . T.decodeUtf8 <$> remainingBytes
+getValue _ VarCharColumn    = withBytes $ CqlText . T.decodeUtf8 <$> remainingBytes
+getValue _ AsciiColumn      = withBytes $ CqlAscii . T.decodeUtf8 <$> remainingBytes
+getValue _ BlobColumn       = withBytes $ CqlBlob <$> remainingBytesLazy
+getValue _ UuidColumn       = withBytes $ CqlUuid <$> decodeUUID
+getValue _ TimeUuidColumn   = withBytes $ CqlTimeUuid <$> decodeUUID
+getValue _ TimestampColumn  = withBytes $ CqlTimestamp <$> get
+getValue _ CounterColumn    = withBytes $ CqlCounter <$> get
+getValue _ InetColumn       = withBytes $ CqlInet <$> do
     len <- remaining
     case len of
         4  -> IPv4 . fromHostAddress <$> getWord32le
@@ -514,37 +490,34 @@ getNative _ InetColumn       = CqlInet <$> do
             a <- (,,,) <$> getWord32host <*> getWord32host <*> getWord32host <*> getWord32host
             return $ IPv6 (fromHostAddress6 a)
         n  -> fail $ "getNative: invalid Inet length: " ++ show n
-getNative _ VarIntColumn  = CqlVarInt <$> bytes2integer
-getNative _ DecimalColumn = do
+getValue V4 DateColumn     = withBytes $ CqlDate <$> get
+getValue _  DateColumn     = fail "getNative: date type"
+getValue V4 TimeColumn     = withBytes $ CqlTime <$> get
+getValue _  TimeColumn     = fail "getNative: time type"
+getValue V4 SmallIntColumn = withBytes $ CqlSmallInt <$> get
+getValue _  SmallIntColumn = fail "getNative: smallint type"
+getValue V4 TinyIntColumn  = withBytes $ CqlTinyInt <$> get
+getValue _  TinyIntColumn  = fail "getNative: tinyint type"
+getValue _  VarIntColumn   = withBytes $ CqlVarInt <$> bytes2integer
+getValue _  DecimalColumn  = withBytes $ do
     x <- get :: Get Int32
     y <- bytes2integer
     return (CqlDecimal (Decimal (fromIntegral x) y))
-getNative V3 (UdtColumn _ x) = do
-    b <- remainingBytes
-    either fail return $ flip runGet b $ CqlUdt <$> do
-        let (n, t) = unzip x
-        zip n <$> mapM (getValue V3) t
-getNative V2 c@(UdtColumn _ _) = fail $ "getNative: udt: " ++ show c
-getNative _  c@(ListColumn  _) = fail $ "getNative: collection type: " ++ show c
-getNative _  c@(SetColumn   _) = fail $ "getNative: collection type: " ++ show c
-getNative _  c@(MapColumn _ _) = fail $ "getNative: collection type: " ++ show c
-getNative _  c@(MaybeColumn _) = fail $ "getNative: collection type: " ++ show c
-getNative _  c@(TupleColumn _) = fail $ "getNative: tuple type: " ++ show c
+getValue v (UdtColumn _ x) = withBytes $ CqlUdt <$> do
+    let (n, t) = unzip x
+    zip n <$> mapM (getValue v) t
 
 getList :: Get [a] -> Get [a]
 getList m = do
     n <- lookAhead (get :: Get Int32)
     if n < 0 then uncheckedSkip 4 >> return []
-             else withBytes 4 m
+             else withBytes m
 
-withBytes :: Int -> Get a -> Get a
-withBytes s p = do
-    n <- case s of
-        2 -> fromIntegral <$> (get :: Get Word16)
-        4 -> fromIntegral <$> (get :: Get Int32)
-        _ -> fail $ "withBytes: invalid size: " ++ show s
+withBytes :: Get a -> Get a
+withBytes p = do
+    n <- fromIntegral <$> (get :: Get Int32)
     when (n < 0) $
-        fail "withBytes: null"
+        fail $ "withBytes: null (length = " ++ show n ++ ")"
     b <- getBytes n
     case runGet p b of
         Left  e -> fail $ "withBytes: " ++ e
@@ -556,12 +529,10 @@ remainingBytes = remaining >>= getByteString . fromIntegral
 remainingBytesLazy :: Get LB.ByteString
 remainingBytesLazy = remaining >>= getLazyByteString . fromIntegral
 
-toBytes :: Int -> Put -> Put
-toBytes s p = do
+toBytes :: Put -> Put
+toBytes p = do
     let bytes = runPut p
-    case s of
-        2 -> put (fromIntegral (B.length bytes) :: Word16)
-        _ -> put (fromIntegral (B.length bytes) :: Int32)
+    put (fromIntegral (B.length bytes) :: Int32)
     putByteString bytes
 
 #ifdef INCOMPATIBLE_VARINT
