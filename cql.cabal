@@ -5,7 +5,8 @@ stability:            experimental
 license:              OtherLicense
 license-file:         LICENSE
 author:               Toralf Wittner, Roman S. Borschel
-maintainer:           Toralf Wittner <tw@dtex.org>
+maintainer:           Toralf Wittner <tw@dtex.org>,
+                      Roman S. Borschel <roman@pkaboo.org>
 copyright:            (C) 2014-2015 Toralf Wittner, Roman S. Borschel
 homepage:             https://gitlab.com/twittner/cql/
 bug-reports:          https://gitlab.com/twittner/cql/issues
