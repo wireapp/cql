@@ -32,7 +32,8 @@ import Control.Applicative
 import Data.Bits
 import Data.ByteString.Lazy (ByteString)
 import Data.Int
-import Data.Monoid
+import Data.Monoid hiding ((<>))
+import Data.Semigroup
 import Data.Serialize
 import Data.Word
 import Database.CQL.Protocol.Codec
@@ -136,9 +137,12 @@ decodeStreamId V3 = StreamId <$> decodeSignedShort
 -- as in @compress <> tracing <> mempty@.
 newtype Flags = Flags Word8 deriving (Eq, Show)
 
+instance Semigroup Flags where
+    (Flags a) <> (Flags b) = Flags (a .|. b)
+
 instance Monoid Flags where
-    mempty = Flags 0
-    mappend (Flags a) (Flags b) = Flags (a .|. b)
+    mempty  = Flags 0
+    mappend = (<>)
 
 encodeFlags :: Putter Flags
 encodeFlags (Flags x) = encodeByte x
