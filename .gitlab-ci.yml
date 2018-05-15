@@ -8,8 +8,9 @@ cache:
 
 before_script:
   - apt -qq update
-  - apt -qq install xz-utils make libstdc++-4.9-dev g++ > /dev/null
+  - apt -qq install build-essential netbase xz-utils libstdc++-4.9-dev libssl-dev > /dev/null
   - stack upgrade && hash -d stack && stack --version
+  - stack clean --full
 
 test:8.4:
   image: haskell:8.2
