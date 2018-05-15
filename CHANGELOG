@@ -1,3 +1,8 @@
+4.0.1
+-----
+- GHC 8.4 compatibility.
+- Adjust lower bound on base (>= 4.9) to reflect reality.
+
 4.0.0
 -----
 - Add support for CQL V4 binary protocol.
