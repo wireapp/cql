@@ -1,5 +1,5 @@
 name:                 cql
-version:              4.0.0
+version:              4.0.1
 synopsis:             Cassandra CQL binary protocol.
 stability:            experimental
 license:              OtherLicense
@@ -62,7 +62,7 @@ library
         cpp-options: -DINCOMPATIBLE_VARINT
 
     build-depends:
-          base             >= 4.5    && < 5.0
+          base             >= 4.9    && < 5.0
         , bytestring       >= 0.10
         , cereal           >= 0.3
         , containers       >= 0.5

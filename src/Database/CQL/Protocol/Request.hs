@@ -52,7 +52,6 @@ module Database.CQL.Protocol.Request
     ) where
 
 import Control.Applicative
-import Control.Monad (when)
 import Data.Bits
 import Data.ByteString.Lazy (ByteString)
 import Data.Foldable (traverse_)
