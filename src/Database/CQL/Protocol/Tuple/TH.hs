@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Database.CQL.Protocol.Tuple.TH where
@@ -19,29 +18,17 @@ tupleInstance n = do
     vnames <- replicateM n (newName "a")
     let vtypes    = map VarT vnames
     let tupleType = foldl1 ($:) (TupleT n : vtypes)
-#if MIN_VERSION_template_haskell(2,10,0)
     let ctx = map (AppT (ConT cql)) vtypes
-#else
-    let ctx = map (\t -> ClassP cql [t]) vtypes
-#endif
     td <- tupleDecl n
     sd <- storeDecl n
     return
-#if MIN_VERSION_template_haskell(2,11,0)
         [ InstanceD Nothing ctx (tcon "PrivateTuple" $: tupleType)
-#else
-        [ InstanceD ctx (tcon "PrivateTuple" $: tupleType)
-#endif
             [ FunD (mkName "count") [countDecl n]
             , FunD (mkName "check") [taggedDecl (var "typecheck") vnames]
             , FunD (mkName "tuple") [td]
             , FunD (mkName "store") [sd]
             ]
-#if MIN_VERSION_template_haskell(2,11,0)
         , InstanceD Nothing ctx (tcon "Tuple" $: tupleType) []
-#else
-        , InstanceD ctx (tcon "Tuple" $: tupleType) []
-#endif
         ]
 
 countDecl :: Int -> Clause
@@ -105,19 +92,11 @@ cqlInstances n = do
     vnames <- replicateM n (newName "a")
     let vtypes    = map VarT vnames
     let tupleType = foldl1 ($:) (TupleT n : vtypes)
-#if MIN_VERSION_template_haskell(2,10,0)
     let ctx = map (AppT (ConT cql)) vtypes
-#else
-    let ctx = map (\t -> ClassP cql [t]) vtypes
-#endif
     tocql   <- toCqlDecl
     fromcql <- fromCqlDecl
     return
-#if MIN_VERSION_template_haskell(2,11,0)
         [ InstanceD Nothing ctx (tcon "Cql" $: tupleType)
-#else
-        [ InstanceD ctx (tcon "Cql" $: tupleType)
-#endif
             [ FunD (mkName "ctype")   [taggedDecl (con "TupleColumn") vnames]
             , FunD (mkName "toCql")   [tocql]
             , FunD (mkName "fromCql") [fromcql]

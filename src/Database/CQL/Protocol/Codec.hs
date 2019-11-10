@@ -1,7 +1,6 @@
 {-# LANGUAGE BangPatterns      #-}
 {-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections     #-}
 
 module Database.CQL.Protocol.Codec
     ( encodeByte
@@ -81,7 +80,7 @@ import Data.UUID (UUID)
 import Data.Word
 import Data.Serialize hiding (decode, encode)
 import Database.CQL.Protocol.Types
-import Network.Socket (SockAddr (..), PortNumber (..))
+import Network.Socket (SockAddr (..), PortNumber)
 import Prelude
 
 import qualified Data.ByteString         as B
@@ -249,9 +248,9 @@ encodeSockAddr (SockAddrInet6 p _ (a, b, c, d) _) = do
     putWord32host c
     putWord32host d
     putWord32be (fromIntegral p)
-encodeSockAddr (SockAddrUnix _) = fail "encode-socket: unix address not allowed"
+encodeSockAddr (SockAddrUnix _) = error "encode-socket: unix address not supported"
 #if MIN_VERSION_network(2,6,1) && !MIN_VERSION_network(3,0,0)
-encodeSockAddr (SockAddrCan _) = fail "encode-socket: can address not allowed"
+encodeSockAddr (SockAddrCan _) = error "encode-socket: can address not supported"
 #endif
 
 decodeSockAddr :: Get SockAddr
@@ -431,13 +430,13 @@ putValue _ (CqlDecimal x)  = toBytes $ do
     put (fromIntegral (decimalPlaces x) :: Int32)
     integer2bytes (decimalMantissa x)
 putValue V4   (CqlDate x)     = toBytes $ put x
-putValue _  v@(CqlDate _)     = fail $ "putValue: date: " ++ show v
+putValue _  v@(CqlDate _)     = error $ "putValue: date: " ++ show v
 putValue V4   (CqlTime x)     = toBytes $ put x
-putValue _  v@(CqlTime _)     = fail $ "putValue: time: " ++ show v
+putValue _  v@(CqlTime _)     = error $ "putValue: time: " ++ show v
 putValue V4   (CqlSmallInt x) = toBytes $ put x
-putValue _  v@(CqlSmallInt _) = fail $ "putValue: smallint: " ++ show v
+putValue _  v@(CqlSmallInt _) = error $ "putValue: smallint: " ++ show v
 putValue V4   (CqlTinyInt x)  = toBytes $ put x
-putValue _  v@(CqlTinyInt _)  = fail $ "putValue: tinyint: " ++ show v
+putValue _  v@(CqlTinyInt _)  = error $ "putValue: tinyint: " ++ show v
 putValue v    (CqlUdt   x)    = toBytes $ mapM_ (putValue v . snd) x
 putValue v    (CqlList x)     = toBytes $ do
     encodeInt (fromIntegral (length x))
