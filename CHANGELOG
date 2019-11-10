@@ -1,6 +1,6 @@
-4.X.X
+4.0.2
 -----
-- Add missing constructors for 'WriteType'.
+- Add missing constructors for `WriteType`.
   cf. https://github.com/apache/cassandra/commit/5a662ea3ffdbb9563cf3ef959deb13982b084b24
 - GHC 8.8 compatibility.
 
