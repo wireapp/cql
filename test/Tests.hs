@@ -1,6 +1,8 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE TypeFamilies      #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -15,6 +17,7 @@ import Data.Int
 import Data.IP
 import Data.Maybe
 import Data.Serialize
+import Data.Text (Text)
 import Data.Time
 import Data.Time.Clock.POSIX
 import Data.UUID
@@ -113,10 +116,10 @@ genValue v = sized $ \n ->
 
     v3 0 = v3Leaf
     v3 n = v3Leaf ++
-        [ CqlList      <$> many n
-        , CqlSet       <$> many n
-        , CqlMap       <$> (zip <$> many n <*> many n)
-        , CqlTuple     <$> many1 n
+        [ CqlList  <$> many n
+        , CqlSet   <$> many n
+        , CqlMap   <$> (zip <$> many n <*> many n)
+        , CqlTuple <$> many1 n
         ]
 
     v4 0 = v4Leaf ++ v3Leaf
@@ -190,3 +193,15 @@ instance Arbitrary UTCTime where
 
 instance Arbitrary (DecimalRaw Integer) where
     arbitrary = Decimal <$> arbitrary <*> arbitrary
+
+-----------------------------------------------------------------------------
+-- TH code generation test.
+
+data TestRecord = TestRecord
+    { testRecordA :: IP
+    , testRecordB :: Text
+    , testRecordC :: Int32
+    } deriving Show
+
+recordInstance ''TestRecord
+

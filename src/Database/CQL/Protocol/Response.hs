@@ -216,10 +216,10 @@ data Result k a b
 
 -- | Part of a @RowsResult@. Describes the result set.
 data MetaData = MetaData
-    { columnCount        :: !Int32
-    , pagingState        :: Maybe PagingState
-    , columnSpecs        :: [ColumnSpec]
-    , primaryKeyIndicies :: [Int32]
+    { columnCount       :: !Int32
+    , pagingState       :: Maybe PagingState
+    , columnSpecs       :: [ColumnSpec]
+    , primaryKeyIndices :: [Int32]
     } deriving (Show)
 
 -- | The column specification. Part of 'MetaData' unless 'skipMetaData' in
@@ -455,6 +455,11 @@ data WriteType
     | WriteBatchLog
     | WriteUnloggedBatch
     | WriteCounter
+    | WriteCas
+    | WriteView
+        -- ^ Since 'V4'.
+    | WriteCdc
+        -- ^ Since 'V4'.
     deriving (Eq, Show)
 
 decodeError :: Get Error
@@ -517,5 +522,8 @@ decodeWriteType = decodeString >>= fromString
     fromString "BATCH_LOG"       = return WriteBatchLog
     fromString "UNLOGGED_BATCH"  = return WriteUnloggedBatch
     fromString "COUNTER"         = return WriteCounter
+    fromString "CAS"             = return WriteCas
+    fromString "VIEW"            = return WriteView
+    fromString "CDC"             = return WriteCdc
     fromString unknown           = fail $
         "decode: unknown write-type: " ++ show unknown

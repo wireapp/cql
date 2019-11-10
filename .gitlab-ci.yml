@@ -1,29 +1,41 @@
 variables:
-  STACK_ROOT: "${CI_PROJECT_DIR}/.stack"
+  STORE_DIR: "${CI_PROJECT_DIR}/.cabal-store"
 
 cache:
   key: "$CI_JOB_NAME"
   paths:
-    - .stack
+    - .cabal-store
+    - dist-newstyle/cache
 
 before_script:
   - apt -qq update
-  - apt -qq install build-essential netbase xz-utils libstdc++-4.9-dev libssl-dev > /dev/null
-  - stack upgrade && hash -d stack && stack --version
-  - stack clean --full
+  - cabal update
+
+test:8.8:
+  image: haskell:8.8
+  script:
+    - apt -qq -y install build-essential libssl-dev > /dev/null
+    - cabal --store-dir=$STORE_DIR test
+
+test:8.6:
+  image: haskell:8.6
+  script:
+    - apt -qq -y install build-essential libssl-dev > /dev/null
+    - cabal --store-dir=$STORE_DIR new-test
 
 test:8.4:
-  image: haskell:8.2
+  image: haskell:8.4
   script:
-    - stack -j 1 --resolver nightly-2018-05-15 test --fast
+    - apt -qq -y install build-essential libssl-dev > /dev/null
+    - cabal --store-dir=$STORE_DIR new-test
 
 test:8.2:
   image: haskell:8.2
+  before_script:
+    - apt-key adv --keyserver ha.pool.sks-keyservers.net --recv-keys 2EAF8B8BB12873F5
+    - apt -qq update
+    - cabal update
   script:
-    - stack -j 1 test --fast
-
-test:8.0:
-  image: haskell:8.0
-  script:
-    - stack -j 1 --resolver lts-9.21 test --fast
+    - apt -qq -y install build-essential libssl-dev > /dev/null
+    - cabal --store-dir=$STORE_DIR new-test
 
