@@ -9,6 +9,7 @@ module Database.CQL.Protocol.Record
 
 import Control.Monad
 import Language.Haskell.TH
+import Database.CQL.Protocol.Tuple.TH (mkTup)
 
 typeSynDecl :: Name -> Type -> Type -> Dec
 #if __GLASGOW_HASKELL__ < 808
@@ -91,7 +92,7 @@ asTupleDecl c =
     go n t = do
         vars <- replicateM (length t) (newName "a")
         return $ Clause [ConP n (map VarP vars)] (body vars) []
-    body = NormalB . TupE . map VarE
+    body = NormalB . mkTup . map VarE
 
 asRecrdDecl ::Con -> Q Clause
 asRecrdDecl c =
