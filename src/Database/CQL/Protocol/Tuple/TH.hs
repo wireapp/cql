@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Database.CQL.Protocol.Tuple.TH where
@@ -61,7 +62,7 @@ tupleDecl n = do
     star   = flip UInfixE (var "<*>")
     comb   = do
         names <- replicateM n (newName "x")
-        let f = NormalB $ TupE (map VarE names)
+        let f = NormalB $ mkTup (map VarE names)
         return [ FunD (mkName "combine") [Clause (map VarP names) f []] ]
 
 -- store v (a, b) = put (2 :: Word16) >> putValue v (toCql a) >> putValue v (toCql b)
@@ -130,7 +131,7 @@ cqlInstances n = do
         fn names   = map (AppE (var "fromCql") . VarE) names
         combine    = do
             names <- replicateM n (newName "x")
-            let f = NormalB $ TupE (map VarE names)
+            let f = NormalB $ mkTup (map VarE names)
             return [ FunD (mkName "combine") [Clause (map VarP names) f []] ]
         failure = LitE (StringL $ "Expected CqlTuple with " ++ show n ++ " elements")
 
@@ -153,3 +154,9 @@ tcon = ConT . mkName
 ($:) :: Type -> Type -> Type
 ($:) = AppT
 
+mkTup :: [Exp] -> Exp
+#if MIN_VERSION_template_haskell(2,16,0)
+mkTup = TupE . map Just
+#else
+mkTup = TupE
+#endif
