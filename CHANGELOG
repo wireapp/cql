@@ -1,3 +1,8 @@
+4.0.3
+-----
+- Compatibility with template-haskell-2.16.
+  https://gitlab.com/twittner/cql/-/merge_requests/9.
+
 4.0.2
 -----
 - Add missing constructors for `WriteType`.
