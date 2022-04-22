@@ -91,7 +91,11 @@ asTupleDecl c =
   where
     go n t = do
         vars <- replicateM (length t) (newName "a")
+#if MIN_VERSION_template_haskell(2,18,0)
+        return $ Clause [ConP n [] (map VarP vars)] (body vars) []
+#else
         return $ Clause [ConP n (map VarP vars)] (body vars) []
+#endif
     body = NormalB . mkTup . map VarE
 
 asRecrdDecl ::Con -> Q Clause

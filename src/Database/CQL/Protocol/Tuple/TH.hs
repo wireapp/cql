@@ -72,7 +72,11 @@ storeDecl n = do
     names <- replicateM n (newName "k")
     return $ Clause [VarP v, TupP (map VarP names)] (NormalB $ body v names) []
   where
+#if MIN_VERSION_template_haskell(2,17,0)
+    body x names = DoE Nothing (NoBindS size : map (NoBindS . value x) names)
+#else
     body x names = DoE (NoBindS size : map (NoBindS . value x) names)
+#endif
     size         = var "put" $$ SigE (litInt n) (tcon "Word16")
     value x v    = var "putValue" $$ VarE x $$ (var "toCql" $$ VarE v)
 
@@ -117,7 +121,11 @@ cqlInstances n = do
         Clause
             [VarP (mkName "t")]
             (NormalB $ CaseE (var "t")
+#if MIN_VERSION_template_haskell(2,18,0)
+                [ Match (ParensP (ConP (mkName "CqlTuple") [] [ListP (map VarP names)]))
+#else
                 [ Match (ParensP (ConP (mkName "CqlTuple") [ListP (map VarP names)]))
+#endif
                         (NormalB $ body names)
                         []
                 , Match WildP
