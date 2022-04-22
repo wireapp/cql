@@ -47,13 +47,3 @@ test:8.4:
     - apt -qq -y install build-essential libssl-dev > /dev/null
     - cabal --store-dir=$STORE_DIR new-test
 
-test:8.2:
-  image: haskell:8.2
-  before_script:
-    - apt-key adv --keyserver ha.pool.sks-keyservers.net --recv-keys 2EAF8B8BB12873F5
-    - apt -qq update
-    - cabal update
-  script:
-    - apt -qq -y install build-essential libssl-dev > /dev/null
-    - cabal --store-dir=$STORE_DIR new-test
-
