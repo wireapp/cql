@@ -233,3 +233,11 @@ data W
 -- | Type tag for schema queries, i.e. 'QueryString S a b'.
 data S
 
+-- | The column specification. Part of 'MetaData' unless 'skipMetaData' in
+-- 'QueryParams' was True.
+data ColumnSpec = ColumnSpec
+    { keyspace   :: !Keyspace
+    , table      :: !Table
+    , columnName :: !Text
+    , columnType :: !ColumnType
+    } deriving (Show)

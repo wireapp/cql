@@ -222,15 +222,6 @@ data MetaData = MetaData
     , primaryKeyIndices :: [Int32]
     } deriving (Show)
 
--- | The column specification. Part of 'MetaData' unless 'skipMetaData' in
--- 'QueryParams' was True.
-data ColumnSpec = ColumnSpec
-    { keyspace   :: !Keyspace
-    , table      :: !Table
-    , columnName :: !Text
-    , columnType :: !ColumnType
-    } deriving (Show)
-
 decodeResult :: forall k a b. (Tuple a, Tuple b) => Version -> Get (Result k a b)
 decodeResult v = decodeInt >>= go
   where
@@ -250,7 +241,7 @@ decodeResult v = decodeInt >>= go
         let message   = "expected: " ++ show expected ++ ", but got " ++ show ctypes
         unless (null expected) $
             fail $ "column-type error: " ++ message
-        RowsResult m <$> replicateM (fromIntegral n) (tuple v ctypes)
+        RowsResult m <$> replicateM (fromIntegral n) (tuple v (columnSpecs m))
     go 0x3 = SetKeyspaceResult <$> decodeKeyspace
     go 0x4 = if v == V4
                 then PreparedResult <$> decodeQueryId <*> decodePreparedV4 <*> decodeMetaData

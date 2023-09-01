@@ -55,10 +55,11 @@ taggedDecl ident names = Clause [] (NormalB body) []
 tupleDecl :: Int -> Q Clause
 tupleDecl n = do
     let v = mkName "v"
-    Clause [VarP v, WildP] (NormalB $ body v) <$> comb
+    let cs = mkName "cs"
+    Clause [VarP v, VarP cs] (NormalB $ body v cs) <$> comb
   where
-    body v = UInfixE (var "combine") (var "<$>") (foldl1 star (elts v))
-    elts v = replicate n (var "element" $$ VarE v $$ var "ctype")
+    body v cs = UInfixE (var "combine") (var "<$>") (foldl1 star (elts v cs))
+    elts v cs = flip map [0..n-1] (\i -> var "element" $$ VarE v $$ VarE cs $$ LitE (IntegerL (fromIntegral i)) $$ var "ctype")
     star   = flip UInfixE (var "<*>")
     comb   = do
         names <- replicateM n (newName "x")
